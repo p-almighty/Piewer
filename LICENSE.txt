@@ -1,0 +1,61 @@
+Piewer End User License Agreement (EULA)
+Piewer 使用許諾契約
+Version 1.0
+Copyright (c) 2026 P. All rights reserved.
+
+------------------------------------------------------------
+English
+------------------------------------------------------------
+
+This software ("Piewer") is provided free of charge for personal use.
+
+PERMITTED:
+  - You may download, install, and use Piewer for personal,
+    non-commercial purposes.
+  - You may share the link to the official distribution page.
+
+NOT PERMITTED:
+  - You may NOT modify, reverse-engineer, decompile, or disassemble
+    this software or create derivative works based on it.
+  - You may NOT redistribute this software (modified or unmodified)
+    on other sites, media, or bundled with other products without
+    the author's prior written permission. Please link to the
+    official page instead.
+  - You may NOT sell or use this software for commercial purposes.
+
+DISCLAIMER:
+  This software is provided "AS IS", without warranty of any kind.
+  The author shall not be liable for any damages arising from the
+  use of this software.
+
+All rights not expressly granted are reserved by the author.
+
+------------------------------------------------------------
+日本語
+------------------------------------------------------------
+
+本ソフトウェア（以下「Piewer」）は個人利用に限り無償で提供されます。
+
+【許可されること】
+  - 個人的・非商用目的での Piewer のダウンロード・インストール・使用。
+  - 公式配布ページへのリンクの共有。
+
+【禁止されること】
+  - 本ソフトウェアの改変・リバースエンジニアリング・逆コンパイル・
+    逆アセンブル、および本ソフトウェアを基にした二次的著作物の作成。
+  - 制作者の事前の書面による許可なく、本ソフトウェア（改変・未改変を
+    問わず）を他サイト・媒体で再配布したり、他の製品に同梱すること。
+    再配布の代わりに公式ページへのリンクをご利用ください。
+  - 本ソフトウェアの販売・商用利用。
+
+【免責事項】
+  本ソフトウェアは現状有姿（AS IS）で提供されます。いかなる種類の
+  保証もありません。本ソフトウェアの使用によって生じたいかなる損害に
+  ついても、制作者は責任を負いません。
+
+本契約で明示的に許諾されていない一切の権利は、制作者が留保します。
+
+------------------------------------------------------------
+制作者 / Author : P
+X (Twitter)     : @p_almighty  (https://x.com/p_almighty)
+------------------------------------------------------------
