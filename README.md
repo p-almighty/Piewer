@@ -11,7 +11,7 @@
 
 [![Download](https://img.shields.io/badge/⬇_ダウンロード-最新版-5588ff?style=for-the-badge)](../../releases/latest)
 &nbsp;
-![Version](https://img.shields.io/badge/version-1.1-ff5e9a?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.2-ff5e9a?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 
 </div>
@@ -46,6 +46,14 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.2
+- 🕒 **「最近読んだ本」履歴棚**を追加（最近開いた本を最大100冊表示）
+- ↕️ 本棚を**ドラッグ＆ドロップで並び替え**（滑らかなアニメーション付き）
+- ❓ タイトルバーに**ヘルプボタン**（操作一覧・バージョン情報）を追加
+- ➕ 空の本棚に大きな**「漫画を追加」ボタン**を表示
+- ⚡ 連続ページめくりを**軽量化**
+- 💡 本を開いた直後に操作ヒントを表示
 
 ### v1.1
 - 📁 カバー画像の**保存先を変更可能**に（Cドライブ以外にも置けます）
