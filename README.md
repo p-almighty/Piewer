@@ -11,7 +11,7 @@
 
 [![Download](https://img.shields.io/badge/⬇_ダウンロード-最新版-5588ff?style=for-the-badge)](../../releases/latest)
 &nbsp;
-![Version](https://img.shields.io/badge/version-1.0-ff5e9a?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.1-ff5e9a?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 
 </div>
@@ -42,6 +42,19 @@
 - 💾 **続きから再開** — 最後に読んだページを記憶
 - 🎯 **まとめて管理** — Shiftクリックで範囲選択して一括削除
 - 🌙 **ダークテーマ** — 目に優しい配色
+
+---
+
+## 🆕 更新履歴
+
+### v1.1
+- 📁 カバー画像の**保存先を変更可能**に（Cドライブ以外にも置けます）
+- 🗜️ 表紙キャッシュを**JPG化**して容量を約1/4に削減
+- 🖥️ **高リフレッシュレートモニター**（120/144/240/360Hz等）での本棚スクロールを改善
+- 🎯 選択削除モードに**Shiftキーでの範囲選択**を追加
+
+### v1.0
+- 初回リリース
 
 ---
 
