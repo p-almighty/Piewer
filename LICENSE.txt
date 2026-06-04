@@ -1,27 +1,35 @@
 Piewer End User License Agreement (EULA)
 Piewer 使用許諾契約
-Version 1.0
+Version 1.1
 Copyright (c) 2026 P. All rights reserved.
 
 ------------------------------------------------------------
 English
 ------------------------------------------------------------
 
-This software ("Piewer") is provided free of charge for personal use.
+This software ("Piewer") is a paid product. By purchasing,
+downloading, installing, or using Piewer you agree to this
+agreement.
 
 PERMITTED:
-  - You may download, install, and use Piewer for personal,
-    non-commercial purposes.
-  - You may share the link to the official distribution page.
+  - A user who has purchased Piewer through an official store
+    may install and use it for personal, non-commercial purposes.
+  - You may share the link to the official store / page.
 
 NOT PERMITTED:
   - You may NOT modify, reverse-engineer, decompile, or disassemble
     this software or create derivative works based on it.
-  - You may NOT redistribute this software (modified or unmodified)
-    on other sites, media, or bundled with other products without
-    the author's prior written permission. Please link to the
-    official page instead.
-  - You may NOT sell or use this software for commercial purposes.
+  - You may NOT redistribute, resell, share, or re-upload this
+    software (modified or unmodified) on other sites, media, or
+    bundled with other products. Please link to the official
+    store instead.
+  - You may NOT use this software for commercial purposes without
+    the author's prior written permission.
+
+REFUNDS:
+  Because this is digital content delivered immediately, refunds
+  are handled according to the policy of the store you purchased
+  from. Please contact via the store or the author's X account.
 
 DISCLAIMER:
   This software is provided "AS IS", without warranty of any kind.
@@ -34,19 +42,27 @@ All rights not expressly granted are reserved by the author.
 日本語
 ------------------------------------------------------------
 
-本ソフトウェア（以下「Piewer」）は個人利用に限り無償で提供されます。
+本ソフトウェア（以下「Piewer」）は有償で提供される製品です。
+購入・ダウンロード・インストール・使用をもって、本契約に同意した
+ものとみなします。
 
 【許可されること】
-  - 個人的・非商用目的での Piewer のダウンロード・インストール・使用。
-  - 公式配布ページへのリンクの共有。
+  - 公式ストアで Piewer を購入した利用者は、個人的・非商用目的で
+    インストールおよび使用できます。
+  - 公式ストア／ページへのリンクの共有。
 
 【禁止されること】
   - 本ソフトウェアの改変・リバースエンジニアリング・逆コンパイル・
     逆アセンブル、および本ソフトウェアを基にした二次的著作物の作成。
-  - 制作者の事前の書面による許可なく、本ソフトウェア（改変・未改変を
-    問わず）を他サイト・媒体で再配布したり、他の製品に同梱すること。
-    再配布の代わりに公式ページへのリンクをご利用ください。
-  - 本ソフトウェアの販売・商用利用。
+  - 本ソフトウェア（改変・未改変を問わず）を他サイト・媒体で再配布・
+    再販売・共有・再アップロードすること、他の製品に同梱すること。
+    その代わりに公式ストアへのリンクをご利用ください。
+  - 制作者の事前の書面による許可のない商用利用。
+
+【返金について】
+  本製品は購入後すぐに利用できるデジタルコンテンツのため、返金は
+  購入されたストアのポリシーに従います。ストアの連絡機能、または
+  制作者の X アカウントへご連絡ください。
 
 【免責事項】
   本ソフトウェアは現状有姿（AS IS）で提供されます。いかなる種類の
