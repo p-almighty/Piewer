@@ -1,6 +1,6 @@
 {
-  "version": "1.3.1",
+  "version": "1.4",
   "url": "https://p-almighty.booth.pm/items/8458315",
-  "notes_ja": "日英対応・縦読み(Webtoon)・しおり・タグ/お気に入り・本棚間移動・アップデート確認 ほか。",
-  "notes_en": "JP/EN support, Webtoon vertical mode, bookmarks, tags/favorites, move between shelves, update check, and more."
+  "notes_ja": "UIデザインを刷新（バイオレットのアクセント＋しっかり丸いポップなデザイン）。内部整理も実施。",
+  "notes_en": "Refreshed UI design (violet accent + rounded, pop look). Internal cleanup as well."
 }
