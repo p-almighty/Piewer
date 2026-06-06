@@ -13,7 +13,7 @@
 &nbsp;
 [![BOOTHで製品版を購入](https://img.shields.io/badge/🛒_製品版を購入_(BOOTH)-ff5e9a?style=for-the-badge)](https://p-almighty.booth.pm/items/8458315)
 <br>
-![Version](https://img.shields.io/badge/version-1.4-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.5-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 
 </div>
@@ -62,6 +62,15 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.5
+- 🪟 **Windows標準のウィンドウスナップに対応** — 画面端へドラッグして分割表示（スナップレイアウト）
+- ⛶ **全画面まわりを改善** — マウスを画面最上部に寄せるとタイトルバーが出現。閲覧中の Esc は常に本棚へ戻る（全画面は維持）
+- 🖱️ **マウスホイールでページ送り**に切替可能（⚙設定／閲覧中のメニュー。上で次・下で前）
+- 📂 **「登録せずに開く」モード**を追加（本棚に入れずにそのまま閲覧）
+- 🔍 **本棚一覧から全本棚を横断検索**するボタンを追加
+- 🖱️ **本棚一覧へのドラッグ＆ドロップ** — 何もない所＝登録せず開く／本棚カード＝その本棚に登録
+- 🔇 「続きから読む」確認ダイアログの効果音を解消、ほか細かな改善
 
 ### v1.4
 - 🎨 **UIデザインを刷新** — バイオレットのアクセント＋しっかり丸いポップなデザイン（ピル型ボタン・角丸カード・ふんわり影）。本棚は ⭐お気に入り=金 / 🕒最近読んだ本=ティール で色分け

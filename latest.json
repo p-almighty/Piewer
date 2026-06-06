@@ -1,6 +1,6 @@
 {
-  "version": "1.4",
+  "version": "1.5",
   "url": "https://p-almighty.booth.pm/items/8458315",
-  "notes_ja": "UIデザインを刷新（バイオレットのアクセント＋しっかり丸いポップなデザイン）。内部整理も実施。",
-  "notes_en": "Refreshed UI design (violet accent + rounded, pop look). Internal cleanup as well."
+  "notes_ja": "Windows標準のウィンドウスナップ（画面端ドラッグで分割表示）に対応。全画面まわりを改善（上端でタイトルバー出現・閲覧中Escで本棚へ）。マウスホイールをページ送りに切替可能に。本棚一覧から「登録せず開く」「全本棚を横断検索」、D&Dで登録/閲覧。続きダイアログの効果音を解消ほか。",
+  "notes_en": "Added native Windows window snapping (drag to a screen edge to split). Improved fullscreen handling (title bar reveals at the top edge; Esc returns to the shelves while reading). Mouse wheel can now turn pages. New 'open without adding' and 'search all shelves' on the start screen, plus drag-and-drop to add or open. Removed the sound on the resume dialog, and more."
 }
