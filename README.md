@@ -13,7 +13,7 @@
 &nbsp;
 [![BOOTHで製品版を購入](https://img.shields.io/badge/🛒_製品版を購入_(BOOTH)-ff5e9a?style=for-the-badge)](https://p-almighty.booth.pm/items/8458315)
 <br>
-![Version](https://img.shields.io/badge/version-1.5-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.6-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 
 </div>
@@ -54,7 +54,7 @@
 - 📖 **見開き / 単ページ / 縦読み（Webtoon）** — 作品に合わせて切替、設定は本ごとに記憶
 - ↕️ **幅 / 高さフィット** & ズーム・パン
 - 🖱️ **タッチ & ドラッグ操作** — スワイプ・慣性スクロール対応
-- 📂 **多彩な形式** — ZIP / CBZ / RAR / CBR / **PDF** / 画像フォルダ
+- 📂 **多彩な形式** — ZIP / CBZ / **EPUB** / RAR / CBR / **PDF** / 画像フォルダ（動くGIF/WebP/APNGも再生）
 - ⌨️ **ショートカットのカスタマイズ**
 - 💾 **続きから再開** & **バックアップ / 復元**
 - 🌙 **ダークテーマ**
@@ -62,6 +62,17 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.6
+- 📘 **EPUB（画像ベース）に対応** — 動く GIF / WebP / APNG はページ内で自動再生
+- ↔️ **綴じ方向（右/左）を自動判定**（EPUB）
+- 🗂 **目次（全ページのサムネイル一覧）** からワンタップでジャンプ
+- 🔍 **ズームをマウス位置中心に** — ホイール／上下ドラッグ（無段階）。中央ダブルクリックで等倍に戻す
+- 📁 **「フォルダから開く」** — PC のフォルダをたどってその場で閲覧（登録不要）
+- 🏷️ **ファイル名から自動タグ付け（実験的）** — 作者 / サークル / 原作 / イベントを抽出
+- 🔎 **タグ絞り込みを刷新** — 種類別の折りたたみ表示＋タグ検索（ひらがな/カタカナ・全角/半角を区別しない）
+- 💾 **本は既定で「続きから」**（⚙設定で変更可）
+- ⚡ 連続ページめくりの高速化、本棚スクロールまわりの不具合修正 ほか
 
 ### v1.5
 - 🪟 **Windows標準のウィンドウスナップに対応** — 画面端へドラッグして分割表示（スナップレイアウト）
@@ -100,8 +111,8 @@
 
 ## 📂 対応ファイル形式
 
-`ZIP` / `CBZ` / `RAR` / `CBR` / `PDF` / 画像フォルダ
-（内包画像: JPG / PNG / GIF / BMP / WEBP）
+`ZIP` / `CBZ` / `EPUB` / `RAR` / `CBR` / `PDF` / 画像フォルダ
+（内包画像: JPG / PNG / GIF / BMP / WEBP。動く GIF / WebP / APNG は自動再生）
 
 ---
 
