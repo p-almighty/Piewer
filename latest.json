@@ -1,6 +1,6 @@
 {
-  "version": "1.5",
+  "version": "1.6",
   "url": "https://p-almighty.booth.pm/items/8458315",
-  "notes_ja": "Windows標準のウィンドウスナップ（画面端ドラッグで分割表示）に対応。全画面まわりを改善（上端でタイトルバー出現・閲覧中Escで本棚へ）。マウスホイールをページ送りに切替可能に。本棚一覧から「登録せず開く」「全本棚を横断検索」、D&Dで登録/閲覧。続きダイアログの効果音を解消ほか。",
-  "notes_en": "Added native Windows window snapping (drag to a screen edge to split). Improved fullscreen handling (title bar reveals at the top edge; Esc returns to the shelves while reading). Mouse wheel can now turn pages. New 'open without adding' and 'search all shelves' on the start screen, plus drag-and-drop to add or open. Removed the sound on the resume dialog, and more."
+  "notes_ja": "EPUB（画像ベース）に対応し、動くGIF/WebP/APNGをページ内で自動再生。綴じ方向（右/左）を自動判定。全ページのサムネイル一覧「目次」からジャンプ。ホイール／上下ドラッグのズームをマウス位置中心に（中央ダブルクリックで等倍）。本棚一覧から『フォルダから開く』でその場閲覧。ファイル名からの自動タグ付け（実験的）。タグ絞り込みを種類別の折りたたみ＋かな/全半角を区別しない検索に刷新。本は既定で『続きから』。連続めくりの高速化やスクロール不具合の修正ほか。",
+  "notes_en": "Added EPUB (image-based) support and auto-play for animated GIF/WebP/APNG. Auto-detects reading direction (RTL/LTR). New thumbnail 'Contents' grid to jump to any page. Wheel and up/down-drag zoom now center on the mouse pointer (double-click center to reset). 'Browse folders' on the start screen to read without adding. Experimental auto-tagging from filenames. Reworked tag filter with collapsible categories and kana/width-insensitive search. Books resume by default. Faster paging, scroll fixes, and more."
 }
