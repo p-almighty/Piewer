@@ -4,17 +4,18 @@
 
 # Piewer
 
-**Windows 向け ローカル漫画ビュワー**
+**Windows 向け ローカル漫画ビュワー（完全無料・オープンソース）**
 
 登録数無制限・本棚スクロール位置の記憶・PDF対応・縦読み対応など、<br>
 快適に漫画を読むための機能を詰め込んだビュワーです。
 
-[![無料版をダウンロード](https://img.shields.io/badge/⬇_無料版をダウンロード-a06cff?style=for-the-badge)](https://github.com/p-almighty/Piewer/releases/latest)
+[![ダウンロード](https://img.shields.io/badge/⬇_ダウンロード-a06cff?style=for-the-badge)](https://github.com/p-almighty/Piewer/releases/latest)
 &nbsp;
-[![BOOTHで製品版を購入](https://img.shields.io/badge/🛒_製品版を購入_(BOOTH)-ff5e9a?style=for-the-badge)](https://p-almighty.booth.pm/items/8458315)
+[![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.6-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.7-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
+![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
 </div>
 
@@ -22,25 +23,14 @@
 
 ## ⬇️ ダウンロード
 
-単体で動作します（Windows 10 / 11）。
+単体で動作します（Windows 10 / 11）。**すべての機能を無料で、登録数の制限なくお使いいただけます。**
 
-### 🆓 無料版（体験版）
-
-まずは無料でお試しいただけます。**本の登録は 50 冊まで**、機能はすべて使えます。
-
-### ⬇️ [**無料版をダウンロード（GitHub Releases）→**](https://github.com/p-almighty/Piewer/releases/latest)
+### ⬇️ [**ダウンロード（GitHub Releases）→**](https://github.com/p-almighty/Piewer/releases/latest)
 
 - `Piewer_Setup.exe` … インストール版（スタートメニュー登録・アンインストーラ付き）
 - `Piewer.exe` … 非インストール版（ポータブル。置くだけで起動）
 
-### ⭐ 製品版（登録上限なし）
-
-たくさん登録したくなったら製品版へ。**登録上限が解除**されます。
-製品版は**起動するだけで自動的に解除**され、無料版で作った本棚データはそのまま引き継がれます。
-
-### 🛒 [**BOOTH で製品版を購入 →** https://p-almighty.booth.pm/items/8458315](https://p-almighty.booth.pm/items/8458315)
-
-> ⚠️ 公式（このGitHub / BOOTH）以外での配布物・再アップロードは正規品ではありません。ご注意ください。
+> 💗 Piewer は完全無料です。もし気に入っていただけたら、[**Ko-fi で開発を支援**](https://ko-fi.com/p_almighty)していただけると、今後の開発の励みになります（任意）。
 
 ---
 
@@ -57,11 +47,16 @@
 - 📂 **多彩な形式** — ZIP / CBZ / **EPUB** / RAR / CBR / **PDF** / 画像フォルダ（動くGIF/WebP/APNGも再生）
 - ⌨️ **ショートカットのカスタマイズ**
 - 💾 **続きから再開** & **バックアップ / 復元**
-- 🌙 **ダークテーマ**
+- 🌙 **ダーク / ライトテーマ** & アクセント色の変更
 
 ---
 
 ## 🆕 更新履歴
+
+### v1.7
+- 🆓 **完全無料化** — 登録数の制限を撤廃し、すべての機能を無料で開放
+- 📖 **オープンソース化（MIT ライセンス）** — ソースコードを公開
+- 💗 **Ko-fi での開発支援（寄付）** に対応
 
 ### v1.6
 - 📘 **EPUB（画像ベース）に対応** — 動く GIF / WebP / APNG はページ内で自動再生
@@ -85,27 +80,12 @@
 
 ### v1.4
 - 🎨 **UIデザインを刷新** — バイオレットのアクセント＋しっかり丸いポップなデザイン（ピル型ボタン・角丸カード・ふんわり影）。本棚は ⭐お気に入り=金 / 🕒最近読んだ本=ティール で色分け
-- 🆓 **無料体験版を GitHub で配布開始**（登録 50 冊まで）
-- 🧹 内部整理（製品版の認証をオフライン方式に統一）
 
 ### v1.3
-- 🔖 **しおり**（目印・前後ジャンプ）
-- 🏷️ **タグ付け・お気に入り**と絞り込み、⭐**お気に入り棚**を追加
-- 🔍 **全本棚を横断検索** / 並び替えに「最近読んだ順・進捗順」
-- 📁 **本棚間で本を移動** / 🏷 タグの一括管理
-- 📖 **縦読み（Webtoon）モード**・**幅/高さフィット**切替（本ごとに設定を記憶）
-- 🖱️ **タッチ操作・ドラッグスクロール（慣性付き）** に対応
-- ⌨️ **ショートカットのカスタマイズ**
-- 💾 **バックアップ / 復元**、本棚を開いた位置の記憶、D&Dでの追加 ほか多数
+- 🔖 しおり、🏷️ タグ付け・お気に入り、🔍 全棚横断検索、📖 縦読み（Webtoon）、⌨️ ショートカット設定、💾 バックアップ/復元 ほか多数
 
-### v1.2
-- 「最近読んだ本」履歴棚、本棚のD&D並び替え、ヘルプ、連続めくり軽量化 など
-
-### v1.1
-- カバー保存先の変更、表紙JPG化、高リフレッシュレート対応、範囲選択 など
-
-### v1.0
-- 初回リリース
+### v1.2 / v1.1 / v1.0
+- 履歴棚・D&D並び替え・ヘルプ・軽量化／カバーJPG化・高リフレッシュレート対応／初回リリース
 
 ---
 
@@ -132,24 +112,41 @@
 
 ---
 
-## 💻 動作環境
+## 🛠️ ソースからの実行・ビルド
 
-- Windows 10 / 11（64bit）
-- Pythonのインストールは不要（単体で動作します）
+```sh
+pip install PySide6 Pillow rarfile PyMuPDF
+python manga_viewer.py
+```
+
+exe 化（任意）:
+
+```sh
+pip install pyinstaller
+python -m PyInstaller Piewer.spec --noconfirm --clean
+```
+
+| ライブラリ | 用途 | 任意/必須 |
+|-----------|------|----------|
+| PySide6 | GUI全般 | 必須 |
+| Pillow | 画像読込・リサイズ | 必須 |
+| PyMuPDF (fitz) | PDF対応 | 任意 |
+| rarfile | CBR/RAR対応 | 任意 |
 
 ---
 
-## ⚠️ ライセンス / 利用について
+## 💻 動作環境
 
-無料版（体験版）は無料でお試しいただけます。登録上限を解除する製品版は**有償**です。いずれも個人利用に限りお使いいただけます。
+- Windows 10 / 11（64bit）
+- 配布版（exe）は Python のインストール不要
 
-- ✅ 個人利用・公式（GitHub / BOOTH）のリンク共有はOK
-- ❌ **改変・リバースエンジニアリング・二次創作は禁止**
-- ❌ 再配布・再販売・無断での再アップロード・商用利用は禁止
+---
 
-詳細は [LICENSE.txt](LICENSE.txt) をご確認ください。
+## 📜 ライセンス
 
-`Copyright (c) 2026 P. All rights reserved.`
+**MIT License** — 改変・再配布・商用利用も自由です。詳細は [LICENSE.txt](LICENSE.txt) をご確認ください。
+
+`Copyright (c) 2026 P (p-almighty)`
 
 ---
 
@@ -158,8 +155,10 @@
 **P**
 X (Twitter): [@p_almighty](https://x.com/p_almighty)
 
+💗 [Ko-fi で開発を支援する](https://ko-fi.com/p_almighty)
+
 ---
 
 <div align="center">
-<sub>Piewer — Manga Viewer for Windows ・ (c) 2026 P ・ All rights reserved.</sub>
+<sub>Piewer — Manga Viewer for Windows ・ MIT License ・ (c) 2026 P</sub>
 </div>

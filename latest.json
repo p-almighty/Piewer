@@ -1,6 +1,6 @@
 {
-  "version": "1.6",
-  "url": "https://p-almighty.booth.pm/items/8458315",
-  "notes_ja": "EPUB（画像ベース）に対応し、動くGIF/WebP/APNGをページ内で自動再生。綴じ方向（右/左）を自動判定。全ページのサムネイル一覧「目次」からジャンプ。ホイール／上下ドラッグのズームをマウス位置中心に（中央ダブルクリックで等倍）。本棚一覧から『フォルダから開く』でその場閲覧。ファイル名からの自動タグ付け（実験的）。タグ絞り込みを種類別の折りたたみ＋かな/全半角を区別しない検索に刷新。本は既定で『続きから』。連続めくりの高速化やスクロール不具合の修正ほか。",
-  "notes_en": "Added EPUB (image-based) support and auto-play for animated GIF/WebP/APNG. Auto-detects reading direction (RTL/LTR). New thumbnail 'Contents' grid to jump to any page. Wheel and up/down-drag zoom now center on the mouse pointer (double-click center to reset). 'Browse folders' on the start screen to read without adding. Experimental auto-tagging from filenames. Reworked tag filter with collapsible categories and kana/width-insensitive search. Books resume by default. Faster paging, scroll fixes, and more."
+  "version": "1.7",
+  "url": "https://github.com/p-almighty/Piewer/releases/latest",
+  "notes_ja": "完全無料になりました。登録数の制限を撤廃し、すべての機能を無料で開放。ソースコードをオープンソース（MITライセンス）として公開しました。気に入っていただけたらKo-fiでの開発支援（寄付・任意）にも対応しています。",
+  "notes_en": "Now completely free. The book limit has been removed and every feature is free to use. The source code is now open source (MIT License). If you like it, you can optionally support development via Ko-fi."
 }

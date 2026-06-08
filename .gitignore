@@ -1,0 +1,24 @@
+# ビルド成果物
+build/
+dist/
+Output/
+__pycache__/
+*.pyc
+*.pyo
+*.spec.bak
+
+# ローカル開発用ドキュメント（ローカルパス/ユーザー名を含むため公開しない）
+CLAUDE.md
+
+# 旧フリーミアム/秘密ファイル（v1.7で撤廃・絶対に公開しない）
+licensing.py
+gen_keys.py
+keys.txt
+license.key
+Piewer_setup_paid.iss
+
+# その他
+error.txt
+.venv/
+venv/
+*.log
