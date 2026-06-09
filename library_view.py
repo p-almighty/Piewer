@@ -523,7 +523,8 @@ class LibraryView(QWidget):
         dlg = TagFilterDialog(self.library.all_tags(), self._tag_filter, self._fav_filter, self,
                               expanded=getattr(self, "_tagfilter_expanded", None),
                               scroll=getattr(self, "_tagfilter_scroll", 0),
-                              read_state=self._read_filter, tag_match=self._tag_match)
+                              read_state=self._read_filter, tag_match=self._tag_match,
+                              labels=self.settings.effective_tag_labels())
         ok = dlg.exec()
         self._tagfilter_expanded = dlg.current_expanded()   # 次回のために記憶
         self._tagfilter_scroll = dlg.current_scroll()
@@ -899,7 +900,8 @@ class LibraryView(QWidget):
             if getattr(self.settings, "auto_tag_on_add", False):
                 import auto_tag
                 mapping, _ = auto_tag.propose(
-                    added, {auto_tag.T_ARTIST, auto_tag.T_PARODY, auto_tag.T_EVENT})
+                    added, {auto_tag.T_ARTIST, auto_tag.T_PARODY, auto_tag.T_EVENT},
+                    labels=self.settings.effective_tag_labels())
                 self.library.add_tags_bulk(mapping)
             self.library.save(); self.refresh()
         if dups: self._show_dup_dialog(dups)
@@ -994,7 +996,7 @@ class LibraryView(QWidget):
             win.check_for_updates(manual=True)
 
     def _open_tag_manager(self, parent=None):
-        TagManagerDialog(self.library, parent or self).exec()
+        TagManagerDialog(self.library, self.settings, parent or self).exec()
         # 削除/改名で消えたタグを絞り込みから外す
         self._tag_filter &= set(self.library.all_tags())
         self._update_filter_btn(); self.refresh()

@@ -60,7 +60,7 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 COVER_GEN_W, COVER_GEN_H = 210, 290
 CARD_SPACING = 16
 APP_NAME = "Piewer"
-APP_VERSION = "1.7"
+APP_VERSION = "1.71"
 # 完全無料・オープンソース。登録数の制限はなし。寄付（任意）の受け口。
 SUPPORT_URL = "https://ko-fi.com/p_almighty"   # 寄付（Ko-fi）。後で差し替え可
 # 履歴棚（最近読んだ本）
@@ -181,6 +181,7 @@ class Settings:
         self.drag_zoom = True       # 上下ドラッグで無段階ズーム（マンガミーヤ式）
         self.browse_path = ""       # フォルダ閲覧で最後に開いていた場所
         self.auto_tag_on_add = False  # 本の追加時にファイル名から自動タグ付け（実験的）
+        self.tag_labels = {}          # オートタグ分類名の上書き {役割キー:表示名}（空=既定）
         self.accent = "violet"        # アクセント色プリセット名
         self.theme = "dark"           # テーマ: "dark" / "light"
         self.lang = ""              # ""=未設定(初回にOSロケールから判定) / "ja" / "en"
@@ -207,6 +208,9 @@ class Settings:
                 self.drag_zoom = bool(d.get("drag_zoom", True))
                 self.browse_path = str(d.get("browse_path", ""))
                 self.auto_tag_on_add = bool(d.get("auto_tag_on_add", False))
+                tl = d.get("tag_labels")
+                if isinstance(tl, dict):
+                    self.tag_labels = {str(k): str(v) for k, v in tl.items() if str(v).strip()}
                 self.accent = str(d.get("accent", "violet"))
                 if d.get("theme") in ("dark", "light"):
                     self.theme = d["theme"]
@@ -229,7 +233,7 @@ class Settings:
                         "wheel_mode": self.wheel_mode, "resume_mode": self.resume_mode,
                         "drag_zoom": self.drag_zoom, "browse_path": self.browse_path,
                         "auto_tag_on_add": self.auto_tag_on_add, "accent": self.accent,
-                        "theme": self.theme,
+                        "tag_labels": self.tag_labels, "theme": self.theme,
                         "shortcuts": self.shortcuts},
                        ensure_ascii=False),
             encoding="utf-8")
@@ -241,6 +245,25 @@ class Settings:
 
     def reset_shortcuts(self):
         self.shortcuts = default_shortcuts(); self.save()
+
+    def effective_tag_labels(self) -> dict:
+        """既定の分類名にユーザー設定を重ねた {役割キー:表示名} を返す。"""
+        import auto_tag
+        lab = dict(auto_tag.DEFAULT_LABELS)
+        lab.update({k: v for k, v in self.tag_labels.items()
+                    if k in lab and str(v).strip()})
+        return lab
+
+    def set_tag_labels(self, labels: dict):
+        """分類名の上書きを保存（既定と同じ/空の項目は持たない）。"""
+        import auto_tag
+        out = {}
+        for k, default in auto_tag.DEFAULT_LABELS.items():
+            v = str(labels.get(k, "")).strip()
+            if v and v != default:
+                out[k] = v
+        self.tag_labels = out
+        self.save()
 
     def reload(self):
         """ファイルから読み直す（バックアップ復元後などに使用）。"""
@@ -596,6 +619,23 @@ class Library:
                 if old in tags:
                     # 重複を避けつつ置換し順序を維持
                     b["tags"] = list(dict.fromkeys(new if t == old else t for t in tags))
+                    n += 1
+        if n: self.save()
+        return n
+
+    def rename_tag_prefix(self, old_pfx: str, new_pfx: str) -> int:
+        """「old_pfx:値」形式のタグの接頭辞を new_pfx に一括置換。影響した本の数。"""
+        old_pfx = old_pfx.strip(); new_pfx = new_pfx.strip()
+        if not old_pfx or not new_pfx or old_pfx == new_pfx:
+            return 0
+        op = old_pfx + ":"; np = new_pfx + ":"
+        n = 0
+        for shelf in self.shelves:
+            for b in shelf["books"]:
+                tags = b.get("tags", [])
+                if any(t.startswith(op) for t in tags):
+                    b["tags"] = list(dict.fromkeys(
+                        (np + t[len(op):]) if t.startswith(op) else t for t in tags))
                     n += 1
         if n: self.save()
         return n

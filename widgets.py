@@ -494,7 +494,7 @@ def show_global_settings(win, parent=None):
     sub(t("データ管理"))
     lv = win.library_view
     action(t("📊  読書統計"), t("蔵書数・進捗・よく読む作者などを表示します。"),
-           lambda: ReadingStatsDialog(win.library, dlg).exec())
+           lambda: ReadingStatsDialog(win.library, s, dlg).exec())
     action(t("🔁  重複を検出"), t("同じファイル名の本を見つけて整理します。"),
            lambda: (DuplicatesDialog(win.library, dlg).exec(), lv.refresh()))
     action(t("📂  フォルダ構成から本棚を作成"),
@@ -749,9 +749,10 @@ class TagPopup(QFrame):
 class TagManagerDialog(QDialog):
     """全タグの名前変更・削除を行う管理ダイアログ。"""
 
-    def __init__(self, library, parent=None):
+    def __init__(self, library, settings=None, parent=None):
         super().__init__(parent)
         self.library = library
+        self.settings = settings
         self.setWindowTitle(t("タグの管理"))
         self.setMinimumSize(440, 440)
         self.setStyleSheet("""
@@ -771,7 +772,13 @@ class TagManagerDialog(QDialog):
         auto_row = QHBoxLayout()
         auto_btn = QPushButton(t("🏷 ファイル名から自動タグ付け（実験的）"))
         auto_btn.clicked.connect(self._auto_tag)
-        auto_row.addWidget(auto_btn); auto_row.addStretch()
+        auto_row.addWidget(auto_btn)
+        if self.settings is not None:
+            cat_btn = QPushButton(t("✏ 分類名を編集"))
+            cat_btn.setToolTip(t("作者・サークル・原作などの分類名を自分の命名に合わせて変更します。"))
+            cat_btn.clicked.connect(self._edit_labels)
+            auto_row.addWidget(cat_btn)
+        auto_row.addStretch()
         lay.addLayout(auto_row)
 
         self._host = QWidget(); self._host.setStyleSheet("background:transparent;")
@@ -810,8 +817,14 @@ class TagManagerDialog(QDialog):
             self._rows_lay.insertWidget(i, row)
 
     def _auto_tag(self):
-        AutoTagDialog(self.library, self).exec()
+        AutoTagDialog(self.library, self.settings, self).exec()
         self._build()   # 追加されたタグを一覧へ反映
+
+    def _edit_labels(self):
+        if self.settings is None:
+            return
+        if CategoryLabelsDialog(self.library, self.settings, self).exec():
+            self._build()   # 接頭辞を置換した場合に一覧へ反映
 
     def _rename(self, tag: str):
         new, ok = QInputDialog.getText(self, t("タグの名前変更"), t("新しいタグ名:"), text=tag)
@@ -827,11 +840,12 @@ class TagManagerDialog(QDialog):
 
 
 class AutoTagDialog(QDialog):
-    """ファイル名から自動タグ付け（同人命名規則）。プレビューしてから一括適用する。"""
+    """ファイル名の構造から自動タグ付け。プレビューしてから一括適用する。"""
 
-    def __init__(self, library, parent=None):
+    def __init__(self, library, settings=None, parent=None):
         super().__init__(parent)
         self.library = library
+        self.settings = settings
         self._mapping = {}
         self.setWindowTitle(t("ファイル名から自動タグ付け（実験的）"))
         self.setMinimumSize(480, 520)
@@ -846,21 +860,51 @@ class AutoTagDialog(QDialog):
             QPushButton#apply { background:#a06cff; color:white; border:none; padding:8px 24px; }
             QPushButton#apply:hover { background:#b488ff; }
         """)
+        # 現在の分類名（ユーザー設定を反映）
+        if settings is not None and hasattr(settings, "effective_tag_labels"):
+            self._labels = settings.effective_tag_labels()
+        else:
+            import auto_tag
+            self._labels = dict(auto_tag.DEFAULT_LABELS)
+        lb = self._labels
+
         lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(10)
-        lay.addWidget(QLabel(t("ファイル名から作者・サークル・原作・イベント等を抽出してタグを付けます。\n"
-                               "既存のタグは消さず追加するだけです。")))
+        lay.addWidget(QLabel(t("ファイル名から {a}・{c}・{p}・{e} 等を抽出してタグを付けます。\n"
+                               "既存のタグは消さず追加するだけです。").format(
+                               a=lb["author"], c=lb["circle"], p=lb["parody"], e=lb["event"])))
         note = QLabel(t("※ 実験的機能です。ファイル名の付け方によっては誤って抽出することがあります。"))
         note.setWordWrap(True)
         note.setStyleSheet("color:#ffc107;font-size:12px;background:transparent;")
         lay.addWidget(note)
 
+        # 仕様の表示トグル＋分類名の編集
+        tool_row = QHBoxLayout(); tool_row.setSpacing(6)
+        self._spec_btn = QPushButton(t("ⓘ 命名ルールを表示"))
+        self._spec_btn.clicked.connect(self._toggle_spec)
+        tool_row.addWidget(self._spec_btn)
+        if settings is not None:
+            edit_btn = QPushButton(t("✏ 分類名を編集"))
+            edit_btn.clicked.connect(self._edit_labels)
+            tool_row.addWidget(edit_btn)
+        tool_row.addStretch()
+        lay.addLayout(tool_row)
+
+        import auto_tag
+        self._spec = QLabel(auto_tag.spec_text(self._labels, i18n.get_lang()))
+        self._spec.setWordWrap(True); self._spec.setVisible(False)
+        self._spec.setStyleSheet("color:#bbb;font-size:12px;background:#1f1a29;"
+                                 "border:1px solid #393350;border-radius:10px;padding:10px 12px;")
+        lay.addWidget(self._spec)
+
         # 抽出する種類
         cb_row = QHBoxLayout(); cb_row.setSpacing(14)
-        self._cb_artist = QCheckBox(t("作者・サークル")); self._cb_artist.setChecked(True)
-        self._cb_parody = QCheckBox(t("原作")); self._cb_parody.setChecked(True)
-        self._cb_event = QCheckBox(t("イベント・その他")); self._cb_event.setChecked(True)
+        self._cb_artist = QCheckBox(t("{a}・{c}").format(a=lb["author"], c=lb["circle"]))
+        self._cb_artist.setChecked(True)
+        self._cb_parody = QCheckBox(lb["parody"]); self._cb_parody.setChecked(True)
+        self._cb_event = QCheckBox(t("{e}・その他").format(e=lb["event"])); self._cb_event.setChecked(True)
         self._cb_folder = QCheckBox(t("親フォルダ名")); self._cb_folder.setChecked(False)
-        self._cb_prefix = QCheckBox(t("接頭辞をつける（作者: など）")); self._cb_prefix.setChecked(True)
+        self._cb_prefix = QCheckBox(t("接頭辞をつける（{a}: など）").format(a=lb["author"]))
+        self._cb_prefix.setChecked(True)
         for c in (self._cb_artist, self._cb_parody, self._cb_event, self._cb_folder):
             c.stateChanged.connect(self._recompute); cb_row.addWidget(c)
         cb_row.addStretch()
@@ -902,10 +946,22 @@ class AutoTagDialog(QDialog):
         if self._cb_folder.isChecked(): s.add(T_FOLDER)
         return s
 
+    def _toggle_spec(self):
+        show = not self._spec.isVisible()
+        self._spec.setVisible(show)
+        self._spec_btn.setText(t("ⓘ 命名ルールを隠す") if show else t("ⓘ 命名ルールを表示"))
+
+    def _edit_labels(self):
+        if self.settings is None:
+            return
+        if CategoryLabelsDialog(self.library, self.settings, self).exec():
+            self.accept()   # ラベルが変わったので開き直してもらう（再構築が単純）
+
     def _recompute(self):
         import auto_tag
         books = [b for shelf in self.library.shelves for b in shelf["books"]]
-        self._mapping, counts = auto_tag.propose(books, self._types(), self._cb_prefix.isChecked())
+        self._mapping, counts = auto_tag.propose(
+            books, self._types(), self._cb_prefix.isChecked(), self._labels)
         n_books = len(self._mapping)
         n_tags = len(counts)
         self._summary.setText(t("{books} 冊に {tags} 種類のタグを付けます").format(books=n_books, tags=n_tags))
@@ -931,6 +987,111 @@ class AutoTagDialog(QDialog):
         n = self.library.add_tags_bulk(self._mapping)
         QMessageBox.information(self, t("完了"),
                                t("{n} 冊にタグを付けました。").format(n=n))
+        self.accept()
+
+
+class CategoryLabelsDialog(QDialog):
+    """オートタグの分類名（作者/サークル/原作/イベント/フォルダ）を自由にリネームする。
+
+    変更後は新しい分類名で自動タグ付け・絞り込みのグループ化が行われる。
+    既存タグの接頭辞も合わせて置き換えるか選べる。
+    """
+    # (役割キー, 説明)
+    _ROLES = (
+        ("author", "作者　— [サークル (作者)] の作者部分"),
+        ("circle", "サークル　— [サークル] / [サークル (作者)]"),
+        ("parody", "原作・作品名　— タイトル後の (…)"),
+        ("event",  "イベント　— 先頭の (…)"),
+        ("folder", "フォルダ　— 親フォルダ名"),
+    )
+
+    def __init__(self, library, settings, parent=None):
+        super().__init__(parent)
+        self.library = library
+        self.settings = settings
+        self._old = settings.effective_tag_labels()
+        self.setWindowTitle(t("分類名の編集"))
+        self.setMinimumWidth(460)
+        self.setStyleSheet("""
+            QDialog { background:#262032; }
+            QLabel { color:#ddd; font-size:13px; background:transparent; }
+            QLineEdit { background:#2b2539; color:#ddd; border:1px solid #463d63;
+                        border-radius:10px; padding:6px 10px; font-size:13px; }
+            QLineEdit:focus { border-color:#a06cff; }
+            QPushButton { background:#322b45; color:#ddd; border:1px solid #463d63;
+                          border-radius:10px; padding:6px 14px; font-size:12px; }
+            QPushButton:hover { background:#423a5a; }
+            QPushButton#save { background:#a06cff; color:white; border:none; padding:8px 24px; }
+            QPushButton#save:hover { background:#b488ff; }
+        """)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(10)
+        intro = QLabel(t("ファイル名から抽出した要素につける分類名（接頭辞）を変更できます。\n"
+                         "自分のファイル命名に合わせて自由に名前を付けてください。"))
+        intro.setWordWrap(True); lay.addWidget(intro)
+
+        self._edits = {}
+        import auto_tag
+        for role, desc in self._ROLES:
+            r = QHBoxLayout(); r.setSpacing(8)
+            lbl = QLabel(t(desc)); lbl.setMinimumWidth(230); lbl.setWordWrap(True)
+            lbl.setStyleSheet("color:#bbb;font-size:12px;background:transparent;")
+            ed = QLineEdit(self._old.get(role, auto_tag.DEFAULT_LABELS[role]))
+            ed.setPlaceholderText(auto_tag.DEFAULT_LABELS[role])
+            self._edits[role] = ed
+            r.addWidget(lbl, 1); r.addWidget(ed, 1)
+            lay.addLayout(r)
+
+        hint = QLabel(t("※ 「:」は使えません。空欄にすると既定名に戻ります。"))
+        hint.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        hint.setWordWrap(True); lay.addWidget(hint)
+
+        row = QHBoxLayout()
+        reset = QPushButton(t("既定に戻す")); reset.clicked.connect(self._reset)
+        row.addWidget(reset); row.addStretch()
+        cancel = QPushButton(t("キャンセル")); cancel.clicked.connect(self.reject)
+        save = QPushButton(t("保存")); save.setObjectName("save"); save.clicked.connect(self._save)
+        row.addWidget(cancel); row.addWidget(save)
+        lay.addLayout(row)
+
+    def _reset(self):
+        import auto_tag
+        for role, ed in self._edits.items():
+            ed.setText(auto_tag.DEFAULT_LABELS[role])
+
+    def _save(self):
+        import auto_tag
+        new = {}
+        for role, ed in self._edits.items():
+            v = ed.text().strip()
+            if ":" in v or "：" in v:
+                QMessageBox.warning(self, t("入力エラー"),
+                                    t("分類名に「:」は使えません。"))
+                return
+            new[role] = v or auto_tag.DEFAULT_LABELS[role]
+        # 分類名どうしの重複を禁止（グループが混ざるため）
+        vals = list(new.values())
+        if len(set(vals)) != len(vals):
+            QMessageBox.warning(self, t("入力エラー"),
+                                t("分類名が重複しています。別々の名前にしてください。"))
+            return
+        self.settings.set_tag_labels(new)
+
+        # 変わった分類名があれば、既存タグの接頭辞も置き換えるか確認
+        changed = [(role, self._old[role], new[role])
+                   for role in new if self._old.get(role) != new[role]]
+        migrated = 0
+        if changed:
+            ans = QMessageBox.question(
+                self, t("既存タグの置き換え"),
+                t("既存の本に付いているタグの分類名も新しい名前に置き換えますか？\n"
+                  "（例: 「作者:〇〇」→「{ex}:〇〇」）").format(ex=changed[0][2]),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if ans == QMessageBox.StandardButton.Yes:
+                for _role, old_pfx, new_pfx in changed:
+                    migrated += self.library.rename_tag_prefix(old_pfx, new_pfx)
+        if migrated:
+            QMessageBox.information(self, t("完了"),
+                                   t("{n} 冊のタグを更新しました。").format(n=migrated))
         self.accept()
 
 
@@ -1032,7 +1193,7 @@ class DuplicatesDialog(QDialog):
 class ReadingStatsDialog(QDialog):
     """読書統計のダッシュボード（蔵書・進捗・よく読む作者/原作など）。"""
 
-    def __init__(self, library, parent=None):
+    def __init__(self, library, settings=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(t("📊 読書統計"))
         self.setMinimumSize(440, 520)
@@ -1043,15 +1204,26 @@ class ReadingStatsDialog(QDialog):
                            "padding:8px 24px;font-size:12px;} QPushButton:hover{background:#b488ff;}")
         lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(10)
         view = QTextBrowser(); view.setOpenExternalLinks(False)
-        view.setHtml(self._build_html(library))
+        if settings is not None and hasattr(settings, "effective_tag_labels"):
+            labels = settings.effective_tag_labels()
+        else:
+            import auto_tag
+            labels = dict(auto_tag.DEFAULT_LABELS)
+        view.setHtml(self._build_html(library, labels))
         lay.addWidget(view, 1)
         row = QHBoxLayout(); row.addStretch()
         close = QPushButton(t("閉じる")); close.clicked.connect(self.accept)
         row.addWidget(close); lay.addLayout(row)
 
     @staticmethod
-    def _build_html(library) -> str:
+    def _build_html(library, labels=None) -> str:
         from collections import Counter
+        import auto_tag
+        lab = dict(auto_tag.DEFAULT_LABELS)
+        if labels:
+            lab.update({k: v for k, v in labels.items() if k in lab and str(v).strip()})
+        artist_pfx = lab["author"] + ":"
+        parody_pfx = lab["parody"] + ":"
         books = library._unique_books()
         total = len(books)
         read = sum(1 for b in books if library.is_read(b))
@@ -1066,8 +1238,8 @@ class ReadingStatsDialog(QDialog):
         artist = Counter(); parody = Counter()
         for b in books:
             for tg in b.get("tags", []):
-                if tg.startswith("作者:"): artist[tg[3:]] += 1
-                elif tg.startswith("原作:"): parody[tg[3:]] += 1
+                if tg.startswith(artist_pfx): artist[tg[len(artist_pfx):]] += 1
+                elif tg.startswith(parody_pfx): parody[tg[len(parody_pfx):]] += 1
 
         def top(counter, n=5):
             if not counter:
@@ -1085,9 +1257,9 @@ class ReadingStatsDialog(QDialog):
         <p>総ページ数: <b>{total_pages:,}</b> ページ<br>
         読んだページ数: <b>{read_pages:,}</b> ページ<br>
         読書した日数: <b>{days}</b> 日</p>
-        <h2 style='color:{ac};'>✍️ よく読む作者</h2>
+        <h2 style='color:{ac};'>✍️ {t("よく読む")}{lab["author"]}</h2>
         <p>{top(artist)}</p>
-        <h2 style='color:{ac};'>🎯 よく読む原作</h2>
+        <h2 style='color:{ac};'>🎯 {t("よく読む")}{lab["parody"]}</h2>
         <p>{top(parody)}</p>
         """
 
@@ -1099,9 +1271,8 @@ class TagFilterDialog(QDialog):
     その一覧（例: イベント → C103 …）が出る。タグが数百〜数千でも辿りやすい。
     複数選択（いずれかに一致でヒット）＋「★お気に入りのみ」。
     """
-    # (接頭辞, カテゴリ表示名) — この順で見出しを並べる
-    _GROUPS = (("作者:", "作者"), ("サークル:", "サークル"),
-               ("原作:", "原作"), ("イベント:", "イベント"), ("フォルダ:", "フォルダ"))
+    # 既定の役割順（設定で分類名が変わってもこの順で先頭に並べる）
+    _ROLE_ORDER = ("author", "circle", "parody", "event", "folder")
     _OTHER = "その他"
     # 選択中タグのチップ（はっきり色枠／ホバーで赤＝クリックで解除を示唆）
     SEL_CHIP_QSS = ("QPushButton{background:#a06cff;color:white;border:1px solid #b488ff;"
@@ -1109,8 +1280,9 @@ class TagFilterDialog(QDialog):
                     "QPushButton:hover{background:#c4452f;border-color:#e06a52;}")
 
     def __init__(self, all_tags, selected, fav_on, parent=None, expanded=None, scroll=0,
-                 read_state="all", tag_match="or"):
+                 read_state="all", tag_match="or", labels=None):
         super().__init__(parent)
+        self._groups = self._compute_groups(all_tags, labels)
         self.result_tags = set(selected)
         self.result_fav = bool(fav_on)
         self.result_read = read_state if read_state in ("all", "unread", "read") else "all"
@@ -1252,21 +1424,49 @@ class TagFilterDialog(QDialog):
                     out.add(cat)
         return out
 
+    def _compute_groups(self, all_tags, labels):
+        """見出しの (接頭辞, カテゴリ名) を作る。
+
+        設定された分類名を役割順で先頭に置き、タグに現れる他の「××:」接頭辞も
+        自動検出して見出しにする（ユーザーが自由に付けた分類も辿れる）。
+        """
+        import auto_tag
+        lab = dict(auto_tag.DEFAULT_LABELS)
+        if labels:
+            lab.update({k: v for k, v in labels.items() if k in lab and str(v).strip()})
+        groups = []
+        seen = set()
+        for role in self._ROLE_ORDER:
+            cat = lab[role]
+            if cat not in seen:
+                groups.append((cat + ":", cat)); seen.add(cat)
+        # タグに現れる他の接頭辞を自動検出（「分類名:値」形式）
+        extra = set()
+        for tag in all_tags:
+            i = tag.find(":")
+            if i > 0:
+                cat = tag[:i]
+                if cat and cat not in seen:
+                    extra.add(cat)
+        for cat in sorted(extra):
+            groups.append((cat + ":", cat)); seen.add(cat)
+        return groups
+
     def _categorize(self, tag: str):
-        for pfx, cat in self._GROUPS:
+        for pfx, cat in self._groups:
             if tag.startswith(pfx):
                 return cat, tag[len(pfx):]
         return self._OTHER, tag
 
     def _build_tree(self, all_tags):
-        buckets = {cat: [] for _, cat in self._GROUPS}
+        buckets = {cat: [] for _, cat in self._groups}
         buckets[self._OTHER] = []
         for tag in all_tags:
             cat, label = self._categorize(tag)
             buckets[cat].append((label, tag))
         self._total = len(all_tags)
         self._labels = []   # サジェスト用（表示ラベル）
-        order = [c for _, c in self._GROUPS] + [self._OTHER]
+        order = [c for _, c in self._groups] + [self._OTHER]
         self._tree.blockSignals(True)
         for cat in order:
             items = buckets.get(cat)

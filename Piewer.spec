@@ -29,8 +29,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,                # UPX圧縮はアンチウイルス誤検知の主因のため無効化
     runtime_tmpdir=None,
     console=False,            # GUIアプリなのでコンソール非表示
     icon='piewer.ico',        # exeのアイコン
+    version='version_info.txt',  # exeにメタデータを埋め込み誤検知を低減
 )

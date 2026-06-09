@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.7-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.71-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -52,6 +52,11 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.71
+- 🏷️ **オートタグの分類名を自由に変更** — 作者 / サークル / 原作 / イベント等の分類名を、自分のファイル命名に合わせてリネームできるように（⚙設定 → タグの管理 → 分類名を編集）
+- 🔎 **タグ絞り込みの自動グループ化** — 「分類名:値」形式の接頭辞を自動で見出しにまとめて表示
+- 🛡️ **ウイルス対策ソフトの誤検知対策** — 実行ファイルにバージョン情報などのメタデータを付与し、圧縮方式を見直し（詳細は[こちら](#️-ウイルス対策ソフトの警告が出る場合)）
 
 ### v1.7
 - 🆓 **完全無料化** — 登録数の制限を撤廃し、すべての機能を無料で開放
@@ -139,6 +144,27 @@ python -m PyInstaller Piewer.spec --noconfirm --clean
 
 - Windows 10 / 11（64bit）
 - 配布版（exe）は Python のインストール不要
+
+---
+
+## ⚠️ ウイルス対策ソフトの警告が出る場合
+
+ダウンロード時や初回起動時に、Windows Defender や一部のウイルス対策ソフトが警告を表示することがあります。これは **誤検知（false positive）** です。
+
+- Piewer は **Python + PyInstaller** で1つの exe にまとめています。この形式は、中身が安全でも「見慣れないプログラム」としてヒューリスティック判定で警告されやすいことが知られています。
+- Piewer は **完全オープンソース（MIT）** です。ソースコードはすべてこのリポジトリで公開しており、不審な処理は含まれていません。心配な場合はソースから自分でビルドして実行できます（[ソースからの実行・ビルド](#️-ソースからの実行ビルド)）。
+- exe を [VirusTotal](https://www.virustotal.com/) にアップロードすると、複数のエンジンで確認できます（多くのエンジンが「安全」と判定し、一部のみが誤検知します）。
+
+### 起動するには
+
+- **Windows SmartScreen**（「WindowsによってPCが保護されました」）→ **［詳細情報］→［実行］** をクリック。
+- **ウイルス対策ソフトが削除/隔離する場合** → 「検疫/隔離」から復元し、Piewer.exe を **例外（許可リスト）** に追加してください。
+
+### Microsoft に誤検知を報告する（任意・改善に役立ちます）
+
+Windows Defender が誤検知した場合、[Microsoft Security Intelligence の誤検知報告フォーム](https://www.microsoft.com/en-us/wdsi/filesubmission) から「ソフトウェア開発者」として提出すると、後日 Microsoft 側の定義が更新され警告が出なくなることがあります。
+
+> 将来的には、誤検知を根本的に減らすための **コード署名証明書** の導入も検討しています。
 
 ---
 
