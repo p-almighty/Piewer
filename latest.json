@@ -1,6 +1,6 @@
 {
-  "version": "1.7",
+  "version": "1.71",
   "url": "https://github.com/p-almighty/Piewer/releases/latest",
-  "notes_ja": "完全無料になりました。登録数の制限を撤廃し、すべての機能を無料で開放。ソースコードをオープンソース（MITライセンス）として公開しました。気に入っていただけたらKo-fiでの開発支援（寄付・任意）にも対応しています。",
-  "notes_en": "Now completely free. The book limit has been removed and every feature is free to use. The source code is now open source (MIT License). If you like it, you can optionally support development via Ko-fi."
+  "notes_ja": "オートタグの分類名（作者・サークル・原作・イベント等）を自分のファイル命名に合わせて自由にリネームできるようになりました。タグの絞り込みは「分類名:値」形式の接頭辞を自動でグループ化します。あわせて、ウイルス対策ソフトの誤検知を減らすため実行ファイルにメタデータを付与し、圧縮方式を見直しました。",
+  "notes_en": "You can now rename the auto-tag categories (author, circle, series, event, etc.) to match your own file naming. The tag filter automatically groups any 'category:value' style prefixes. The executable now embeds version metadata and uses less heuristic-prone packaging to reduce antivirus false positives."
 }
