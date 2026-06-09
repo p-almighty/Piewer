@@ -10,6 +10,8 @@ from PySide6.QtGui import QPixmap, QPainter, QColor, QImage, QFont, QPen, QKeySe
 
 from config import PageSource, DEFAULT_SHORTCUTS
 from image_utils import bytes_to_pixmap, combine_spread, apply_exif
+import image_utils
+import image_fx
 from widgets import FlatBtn, ToggleBtn
 from i18n import t
 
@@ -785,6 +787,14 @@ class WebtoonView(QScrollArea):
         QTimer.singleShot(0, lambda: self.jump_to(self._current))
         QTimer.singleShot(0, self._update_visible)
 
+    def reload_fx(self):
+        """画質補正/擬似カラー化の変更後、読み込み済みページを破棄して再デコードする。"""
+        for lb in self._labels:
+            h = lb.height()
+            lb.setPixmap(QPixmap()); lb.setText("…"); lb.setFixedHeight(h)
+        self._loaded = {}
+        self._update_visible()
+
     def eventFilter(self, obj, event):
         if obj is self.viewport():
             t = event.type()
@@ -1012,6 +1022,9 @@ class ReaderView(QWidget):
         self._grid_btn = fb("🗂 目次", self._toggle_grid)
         tip(self._grid_btn, "全ページのサムネイル一覧から選ぶ")
         tb.addWidget(self._grid_btn)
+        self._fx_btn = fb("🎨 画質", self._open_image_fx)
+        tip(self._fx_btn, "画質補正・擬似カラー化（疑似色刷り）の設定")
+        tb.addWidget(self._fx_btn)
         tb.addStretch()
 
         self._rtl_btn    = tb_tog("右→左",    True,  self._on_rtl)
@@ -1377,6 +1390,7 @@ class ReaderView(QWidget):
 
     def load_book(self, book: dict, source: PageSource, start_page: int = -1):
         self._anim.stop()        # 別の本のアニメ再生を止める
+        image_utils.set_fx(self.settings.image_fx)   # 画質補正/擬似カラー化を反映
         self.book_id = book["id"]; self.source = source
         self._bookmarks = sorted(int(p) for p in book.get("bookmarks", []))
         self._clear_px_cache()   # 別の本のページが残らないようにクリア
@@ -1573,8 +1587,10 @@ class ReaderView(QWidget):
 
     def _load_page_px(self, idx: int) -> QPixmap:
         if not self.source or idx < 0 or idx >= len(self.source): return QPixmap()
+        image_utils.set_fx(self.settings.image_fx)   # 画質補正/擬似カラー化を反映
         # デコード済みページをLRUキャッシュ（連続ページ送り・往復を高速化）
-        key = (idx, self.spread_mode, self.spread_offset, self.rtl_mode)
+        key = (idx, self.spread_mode, self.spread_offset, self.rtl_mode,
+               image_fx.signature(self.settings.image_fx))
         cached = self._px_cache.get(key)
         if cached is not None:
             return cached
@@ -1597,6 +1613,22 @@ class ReaderView(QWidget):
 
     def _clear_px_cache(self):
         self._px_cache.clear(); self._px_cache_order.clear()
+
+    def _open_image_fx(self, *_):
+        from widgets import ImageFxDialog
+        ImageFxDialog(self.settings, on_change=self.apply_image_fx, parent=self).exec()
+
+    def apply_image_fx(self):
+        """画質補正/擬似カラー化の設定変更を即座に反映（キャッシュ破棄＋再描画）。"""
+        image_utils.set_fx(self.settings.image_fx)
+        self._clear_px_cache()
+        self._next_px = self._prev_px = None
+        if not self.source:
+            return
+        if self.webtoon_mode:
+            self._webtoon.reload_fx()
+        else:
+            self._show_current()
 
     def next_page(self):
         if not self.source: return

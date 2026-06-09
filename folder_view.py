@@ -14,7 +14,7 @@ from config import SUPPORTED_EXT, RAR_SUPPORT, PDF_SUPPORT
 
 def _archive_filters() -> list[str]:
     """ツリーに表示する開けるファイルのパターン（環境の対応状況に追従）。"""
-    pats = ["*.zip", "*.cbz", "*.epub"]
+    pats = ["*.zip", "*.cbz", "*.epub", "*.kepub", "*.kepub.epub"]
     if RAR_SUPPORT:
         pats += ["*.cbr", "*.rar"]
     if PDF_SUPPORT:

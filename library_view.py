@@ -880,7 +880,7 @@ class LibraryView(QWidget):
             self._add_files()
 
     def _add_files(self):
-        exts = "*.cbz *.zip *.epub"
+        exts = "*.cbz *.zip *.epub *.kepub *.kepub.epub"
         if RAR_SUPPORT: exts += " *.cbr *.rar"
         if PDF_SUPPORT: exts += " *.pdf"
         filters = t("漫画ファイル ({exts});;すべて (*)").format(exts=exts)
@@ -908,7 +908,7 @@ class LibraryView(QWidget):
 
     # ── ドラッグ&ドロップでの追加 ───────────────────────────
 
-    _DND_EXT = {".cbz", ".zip", ".cbr", ".rar", ".pdf", ".epub"}
+    _DND_EXT = {".cbz", ".zip", ".cbr", ".rar", ".pdf", ".epub", ".kepub"}
 
     def _accepts_dnd(self, event) -> bool:
         # 仮想棚（履歴・お気に入り）には追加できない

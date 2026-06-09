@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (QWidget, QLabel, QFrame, QHBoxLayout, QPushButton
                                QDialog, QVBoxLayout, QTextBrowser, QGridLayout,
                                QScrollArea, QLineEdit, QCompleter, QLayout,
                                QInputDialog, QMessageBox, QCheckBox,
-                               QTreeWidget, QTreeWidgetItem)
+                               QTreeWidget, QTreeWidgetItem, QSlider, QComboBox)
 from PySide6.QtCore import (Qt, Signal, QPoint, QRect, QSize, QTimer,
                             QPropertyAnimation, QEasingCurve)
 from PySide6.QtGui import (QPixmap, QPainter, QColor, QFont, QKeySequence, QPainterPath,
@@ -246,6 +246,7 @@ def _help_html_ja() -> str:
       <tr><td style="color:#bfa6ff;">下部サムネイル</td><td>クリックでそのページへジャンプ</td></tr>
       <tr><td style="color:#bfa6ff;">🔖 しおり</td><td>現在ページに目印／「しおり ▾」で一覧・ジャンプ</td></tr>
       <tr><td style="color:#bfa6ff;">[ ／ ]</td><td>前／次のしおりへジャンプ</td></tr>
+      <tr><td style="color:#bfa6ff;">🎨 画質</td><td>画質補正・擬似カラー化（疑似色刷り）の設定</td></tr>
       <tr><td style="color:#bfa6ff;">「幅」ボタン</td><td>幅に合わせる（ホイールで縦スクロール）</td></tr>
       <tr><td style="color:#bfa6ff;">「縦読み」ボタン</td><td>縦スクロールの連続表示（Webtoon向け）</td></tr>
       <tr><td style="color:#bfa6ff;">マウス 戻る／進むボタン</td><td>本棚へ戻る／直前の本を再開</td></tr>
@@ -254,7 +255,7 @@ def _help_html_ja() -> str:
     <p style="color:#888;font-size:12px;">※ 右綴じ/見開き/幅/縦読みなどの表示設定は本ごとに記憶されます。</p>
     <h3 style="color:#b39dff;">📚 本棚</h3>
     <table cellpadding="4">
-      <tr><td style="color:#bfa6ff;">「＋ ファイル」</td><td>漫画を追加（ZIP/CBZ/RAR/CBR/PDF）</td></tr>
+      <tr><td style="color:#bfa6ff;">「＋ ファイル」</td><td>漫画を追加（ZIP/CBZ/EPUB/KEPUB/RAR/CBR/PDF）</td></tr>
       <tr><td style="color:#bfa6ff;">本棚をドラッグ</td><td>並び順を入れ替え</td></tr>
       <tr><td style="color:#bfa6ff;">本を右クリック</td><td>お気に入り・タグ編集・別の本棚へ移動・削除</td></tr>
       <tr><td style="color:#bfa6ff;">🏷 絞り込み</td><td>お気に入り／タグで本棚を絞り込み</td></tr>
@@ -291,6 +292,7 @@ def _help_html_en() -> str:
       <tr><td style="color:#bfa6ff;">Bottom thumbnails</td><td>Click to jump to a page</td></tr>
       <tr><td style="color:#bfa6ff;">🔖 Bookmark</td><td>Mark current page / “Bookmarks ▾” to list &amp; jump</td></tr>
       <tr><td style="color:#bfa6ff;">[ / ]</td><td>Jump to previous / next bookmark</td></tr>
+      <tr><td style="color:#bfa6ff;">🎨 Image</td><td>Image correction &amp; pseudo-colorization settings</td></tr>
       <tr><td style="color:#bfa6ff;">“Width” button</td><td>Fit width (wheel scrolls vertically)</td></tr>
       <tr><td style="color:#bfa6ff;">“Vertical” button</td><td>Continuous vertical scroll (Webtoon)</td></tr>
       <tr><td style="color:#bfa6ff;">Mouse back / forward</td><td>Back to shelves / resume last book</td></tr>
@@ -299,7 +301,7 @@ def _help_html_en() -> str:
     <p style="color:#888;font-size:12px;">※ Display settings (R→L / spread / width / vertical) are remembered per book.</p>
     <h3 style="color:#b39dff;">📚 Shelves</h3>
     <table cellpadding="4">
-      <tr><td style="color:#bfa6ff;">“+ File”</td><td>Add manga (ZIP/CBZ/RAR/CBR/PDF)</td></tr>
+      <tr><td style="color:#bfa6ff;">“+ File”</td><td>Add manga (ZIP/CBZ/EPUB/KEPUB/RAR/CBR/PDF)</td></tr>
       <tr><td style="color:#bfa6ff;">Drag a shelf</td><td>Reorder</td></tr>
       <tr><td style="color:#bfa6ff;">Right-click a book</td><td>Favorite / edit tags / move to another shelf / remove</td></tr>
       <tr><td style="color:#bfa6ff;">🏷 Filter</td><td>Filter by favorites / tags</td></tr>
@@ -477,6 +479,17 @@ def show_global_settings(win, parent=None):
     resume_row.addWidget(start_btn); resume_row.addStretch()
     lay.addLayout(resume_row)
     desc(t("「続きから」は前回の続きを開きます（最初に戻るには「最初」ボタンやHomeキー）。"))
+
+    # ── 画質・着色 ──
+    sub(t("🎨  画質・擬似カラー化"))
+
+    def _fx_changed():
+        rv = getattr(win, "reader_view", None)
+        if rv is not None and win.stack.currentWidget() is rv:
+            rv.apply_image_fx()
+    action(t("🎨  画質補正・擬似カラー化"),
+           t("白黒/カラーのページを見やすく補正し、お好みで“色刷り風”に着色します。"),
+           lambda: ImageFxDialog(s, on_change=_fx_changed, parent=dlg).exec())
 
     # ── タグ ──
     sub(t("🏷  タグ"))
@@ -1093,6 +1106,138 @@ class CategoryLabelsDialog(QDialog):
             QMessageBox.information(self, t("完了"),
                                    t("{n} 冊のタグを更新しました。").format(n=migrated))
         self.accept()
+
+
+class ImageFxDialog(QDialog):
+    """画質補正＋擬似カラー化（疑似色刷り）の設定。変更は即プレビュー反映する。"""
+
+    def __init__(self, settings, on_change=None, parent=None):
+        super().__init__(parent)
+        import image_fx
+        self.settings = settings
+        self._on_change = on_change
+        self._cfg = image_fx.merge(getattr(settings, "image_fx", {}) or {})
+        self.setWindowTitle(t("🎨 画質・擬似カラー化"))
+        self.setMinimumWidth(430)
+        self.setStyleSheet("""
+            QDialog { background:#262032; }
+            QLabel { color:#ddd; font-size:13px; background:transparent; }
+            QCheckBox { color:#ddd; font-size:13px; background:transparent; }
+            QComboBox { background:#2b2539; color:#ddd; border:1px solid #463d63;
+                        border-radius:10px; padding:5px 10px; font-size:13px; }
+            QComboBox QAbstractItemView { background:#2b2539; color:#ddd;
+                        selection-background-color:#a06cff; }
+            QSlider::groove:horizontal { height:6px; background:#3a3350; border-radius:3px; }
+            QSlider::handle:horizontal { width:16px; margin:-6px 0; border-radius:8px; background:#a06cff; }
+            QSlider::sub-page:horizontal { background:#a06cff; border-radius:3px; }
+            QPushButton { background:#322b45; color:#ddd; border:1px solid #463d63;
+                          border-radius:10px; padding:6px 14px; font-size:12px; }
+            QPushButton:hover { background:#423a5a; }
+            QPushButton#close { background:#a06cff; color:white; border:none; padding:7px 24px; }
+            QPushButton#close:hover { background:#b488ff; }
+        """)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(9)
+
+        def sub(text):
+            s = QLabel(text)
+            s.setStyleSheet("color:#bfa6ff;font-size:12px;font-weight:bold;background:transparent;")
+            lay.addSpacing(2); lay.addWidget(s)
+
+        self._on_cb = QCheckBox(t("画質補正・擬似カラー化を有効にする"))
+        self._on_cb.setChecked(bool(self._cfg["on"]))
+        self._on_cb.stateChanged.connect(self._changed)
+        lay.addWidget(self._on_cb)
+        note = QLabel(t("白黒/カラーのページを見やすく補正し、お好みで“色刷り風”に着色します。"))
+        note.setWordWrap(True); note.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        lay.addWidget(note)
+
+        # ① 画質補正
+        sub(t("画質補正"))
+        self._auto_cb = QCheckBox(t("自動レベル補正（白を白く・黒を黒く）"))
+        self._auto_cb.setChecked(bool(self._cfg["autolevel"]))
+        self._auto_cb.stateChanged.connect(self._changed)
+        lay.addWidget(self._auto_cb)
+
+        g_row = QHBoxLayout(); g_row.setSpacing(8)
+        g_row.addWidget(QLabel(t("明るさ(ガンマ)")))
+        self._gamma = QSlider(Qt.Orientation.Horizontal); self._gamma.setRange(50, 200)
+        self._gamma.setValue(int(round(float(self._cfg["gamma"]) * 100)))
+        self._gamma.valueChanged.connect(self._changed)
+        self._gamma_lbl = QLabel(""); self._gamma_lbl.setMinimumWidth(42)
+        g_row.addWidget(self._gamma, 1); g_row.addWidget(self._gamma_lbl)
+        lay.addLayout(g_row)
+
+        self._sharp_cb = QCheckBox(t("シャープ（くっきりさせる）"))
+        self._sharp_cb.setChecked(bool(self._cfg["sharpen"]))
+        self._sharp_cb.stateChanged.connect(self._changed)
+        lay.addWidget(self._sharp_cb)
+
+        # ② 擬似カラー化
+        sub(t("擬似カラー化（疑似色刷り）"))
+        c_row = QHBoxLayout(); c_row.setSpacing(8)
+        c_row.addWidget(QLabel(t("色")))
+        self._color = QComboBox()
+        for key, name in image_fx.COLOR_ORDER:
+            self._color.addItem(t(name), key)
+        idx = self._color.findData(self._cfg["color"])
+        self._color.setCurrentIndex(idx if idx >= 0 else 0)
+        self._color.currentIndexChanged.connect(self._changed)
+        c_row.addWidget(self._color, 1)
+        lay.addLayout(c_row)
+
+        s_row = QHBoxLayout(); s_row.setSpacing(8)
+        s_row.addWidget(QLabel(t("強さ")))
+        self._strength = QSlider(Qt.Orientation.Horizontal); self._strength.setRange(0, 100)
+        self._strength.setValue(int(self._cfg["strength"]))
+        self._strength.valueChanged.connect(self._changed)
+        self._strength_lbl = QLabel(""); self._strength_lbl.setMinimumWidth(42)
+        s_row.addWidget(self._strength, 1); s_row.addWidget(self._strength_lbl)
+        lay.addLayout(s_row)
+
+        hint = QLabel(t("※ 擬似カラー化は“色がついた風”にする処理で、実際の色を再現するものではありません。"))
+        hint.setWordWrap(True); hint.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        lay.addWidget(hint)
+
+        row = QHBoxLayout()
+        reset = QPushButton(t("既定に戻す")); reset.clicked.connect(self._reset)
+        row.addWidget(reset); row.addStretch()
+        close = QPushButton(t("閉じる")); close.setObjectName("close"); close.clicked.connect(self.accept)
+        row.addWidget(close); lay.addLayout(row)
+
+        self._refresh_labels(); self._apply_enabled_state()
+
+    def _reset(self):
+        import image_fx
+        d = image_fx.DEFAULT
+        self._on_cb.setChecked(d["on"]); self._auto_cb.setChecked(d["autolevel"])
+        self._gamma.setValue(int(round(d["gamma"] * 100))); self._sharp_cb.setChecked(d["sharpen"])
+        i = self._color.findData(d["color"]); self._color.setCurrentIndex(i if i >= 0 else 0)
+        self._strength.setValue(int(d["strength"]))
+        self._changed()
+
+    def _refresh_labels(self):
+        self._gamma_lbl.setText(f"{self._gamma.value() / 100.0:.2f}")
+        self._strength_lbl.setText(f"{self._strength.value()}%")
+
+    def _apply_enabled_state(self):
+        en = self._on_cb.isChecked()
+        for w in (self._auto_cb, self._gamma, self._sharp_cb, self._color, self._strength):
+            w.setEnabled(en)
+
+    def _changed(self, *_):
+        self._cfg = {
+            "on": self._on_cb.isChecked(),
+            "autolevel": self._auto_cb.isChecked(),
+            "gamma": self._gamma.value() / 100.0,
+            "sharpen": self._sharp_cb.isChecked(),
+            "color": self._color.currentData() or "none",
+            "strength": self._strength.value(),
+        }
+        self._refresh_labels(); self._apply_enabled_state()
+        self.settings.image_fx = dict(self._cfg)
+        self.settings.save()
+        if self._on_change:
+            self._on_change()
 
 
 class _CheckTree(QTreeWidget):

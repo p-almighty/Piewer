@@ -6,8 +6,19 @@ from PIL import Image
 
 from config import (PageSource, current_covers_dir, COVER_GEN_W, COVER_GEN_H,
                     COVER_EXT, COVER_JPG_QUALITY, READ_DECODE_ZOOM_HEADROOM)
+import image_fx
 
 Image.MAX_IMAGE_PIXELS = None
+
+# 現在の画質補正/擬似カラー化設定（reader が set_fx で更新）。
+# ページ表示の _pil_to_pixmap でのみ適用＝カバー/サムネは元画像のまま・軽量。
+_fx = None
+
+
+def set_fx(cfg):
+    """ページ表示に適用する画質補正/擬似カラー化の設定（dict）を差し替える。"""
+    global _fx
+    _fx = cfg
 
 
 def _draft_decode(img: Image.Image, target_h: int) -> None:
@@ -51,6 +62,8 @@ def apply_exif(img: Image.Image) -> Image.Image:
 
 def _pil_to_pixmap(img: Image.Image) -> QPixmap:
     img = apply_exif(img); img = img.convert("RGB")
+    if _fx is not None:
+        img = image_fx.apply_fx(img, _fx)   # 画質補正＋擬似カラー化（ONのときだけ効く）
     raw = img.tobytes()
     # raw はこの関数スコープで生存しており、fromImage がピクスマップ側へコピーするため
     # 中間の QImage.copy() は不要（1ページあたり画像1枚分のメモリコピーを削減）。

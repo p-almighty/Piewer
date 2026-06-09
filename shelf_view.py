@@ -13,7 +13,7 @@ from widgets import FlatBtn
 from i18n import t
 
 # ドラッグ&ドロップで受け付ける拡張子
-_DND_EXT = {".cbz", ".zip", ".cbr", ".rar", ".pdf", ".epub"}
+_DND_EXT = {".cbz", ".zip", ".cbr", ".rar", ".pdf", ".epub", ".kepub"}
 
 ADD_ID = "__add__"   # 「新しい本棚」カードの識別子
 # 並び替え不可・先頭固定の特別カード（お気に入り・履歴・追加）

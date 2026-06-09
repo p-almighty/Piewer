@@ -462,7 +462,7 @@ class MainWindow(QMainWindow):
         self.status.showMessage(t("全本棚を検索"))
 
     def _browse_one(self) -> str:
-        exts = "*.cbz *.zip *.epub"
+        exts = "*.cbz *.zip *.epub *.kepub *.kepub.epub"
         if RAR_SUPPORT: exts += " *.cbr *.rar"
         if PDF_SUPPORT: exts += " *.pdf"
         filters = t("漫画ファイル ({exts});;すべて (*)").format(exts=exts)

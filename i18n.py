@@ -360,4 +360,35 @@ _EN = {
     "💗  開発を支援する (Ko-fi)": "💗  Support development (Ko-fi)",
     "データ管理": "Data",
     "操作・ヘルプ": "Controls & Help",
+
+    # ── 画質補正・擬似カラー化（v1.72）──
+    "🎨 画質": "🎨 Image",
+    "画質補正・擬似カラー化（疑似色刷り）の設定": "Image correction & pseudo-colorization settings",
+    "🎨 画質・擬似カラー化": "🎨 Image & Pseudo-color",
+    "🎨  画質・擬似カラー化": "🎨  Image & Pseudo-color",
+    "🎨  画質補正・擬似カラー化": "🎨  Image correction & pseudo-colorization",
+    "画質補正・擬似カラー化を有効にする": "Enable image correction & pseudo-colorization",
+    "白黒/カラーのページを見やすく補正し、お好みで“色刷り風”に着色します。":
+        "Cleans up black-and-white/color pages and optionally tints them in a 'color-print' style.",
+    "画質補正": "Image correction",
+    "自動レベル補正（白を白く・黒を黒く）": "Auto level (whiter whites, blacker blacks)",
+    "明るさ(ガンマ)": "Brightness (gamma)",
+    "シャープ（くっきりさせる）": "Sharpen",
+    "擬似カラー化（疑似色刷り）": "Pseudo-colorization (color-print style)",
+    "色": "Color",
+    "強さ": "Strength",
+    "※ 擬似カラー化は“色がついた風”にする処理で、実際の色を再現するものではありません。":
+        "* Pseudo-colorization only gives a 'colored' impression; it does not reproduce real colors.",
+    "既定に戻す": "Reset to default",
+    "なし": "None",
+    "セピア": "Sepia",
+    "青(2色刷り)": "Blue (2-color)",
+    "暖色": "Warm",
+    "寒色": "Cool",
+    "4色刷り風": "4-color print",
+    # ── 分類名の編集（v1.71）──
+    "分類名の編集": "Edit category names",
+    "✏ 分類名を編集": "✏ Edit category names",
+    "ⓘ 命名ルールを表示": "ⓘ Show naming rules",
+    "ⓘ 命名ルールを隠す": "ⓘ Hide naming rules",
 }

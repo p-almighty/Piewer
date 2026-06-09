@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.71-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.72-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -44,7 +44,8 @@
 - 📖 **見開き / 単ページ / 縦読み（Webtoon）** — 作品に合わせて切替、設定は本ごとに記憶
 - ↕️ **幅 / 高さフィット** & ズーム・パン
 - 🖱️ **タッチ & ドラッグ操作** — スワイプ・慣性スクロール対応
-- 📂 **多彩な形式** — ZIP / CBZ / **EPUB** / RAR / CBR / **PDF** / 画像フォルダ（動くGIF/WebP/APNGも再生）
+- 📂 **多彩な形式** — ZIP / CBZ / **EPUB / KEPUB** / RAR / CBR / **PDF** / 画像フォルダ（動くGIF/WebP/APNGも再生）
+- 🎨 **画質補正 & 擬似カラー化** — 自動レベル補正・ガンマ・シャープ＋“色刷り風”の疑似カラー（セピア/青/暖色/寒色/4色刷り風）
 - ⌨️ **ショートカットのカスタマイズ**
 - 💾 **続きから再開** & **バックアップ / 復元**
 - 🌙 **ダーク / ライトテーマ** & アクセント色の変更
@@ -52,6 +53,12 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.72
+- 📘 **KEPUB 対応** — Kobo の `.kepub` / `.kepub.epub`（画像ベース）を開けるように
+- 🎨 **画質補正** — 自動レベル補正・ガンマ（明るさ）・シャープ
+- 🎨 **擬似カラー化（疑似色刷り）** — セピア / 青(2色刷り) / 暖色 / 寒色 / 4色刷り風。HUDの「🎨 画質」または ⚙設定 から（“色がついた風”にする軽量処理で、AI着色とは別物です）
+- ℹ️ Kindle の **KFX は非対応**。所有する本は [Calibre](https://calibre-ebook.com/)（無料・KFX Input プラグイン）で EPUB/CBZ に変換するとお使いいただけます
 
 ### v1.71
 - 🏷️ **オートタグの分類名を自由に変更** — 作者 / サークル / 原作 / イベント等の分類名を、自分のファイル命名に合わせてリネームできるように（⚙設定 → タグの管理 → 分類名を編集）
@@ -96,8 +103,10 @@
 
 ## 📂 対応ファイル形式
 
-`ZIP` / `CBZ` / `EPUB` / `RAR` / `CBR` / `PDF` / 画像フォルダ
+`ZIP` / `CBZ` / `EPUB` / `KEPUB`(.kepub/.kepub.epub) / `RAR` / `CBR` / `PDF` / 画像フォルダ
 （内包画像: JPG / PNG / GIF / BMP / WEBP。動く GIF / WebP / APNG は自動再生）
+
+> Kindle の **KFX は非対応**です。所有する本は [Calibre](https://calibre-ebook.com/)（無料・KFX Input プラグイン）で EPUB/CBZ に変換してお開きください。
 
 ---
 
