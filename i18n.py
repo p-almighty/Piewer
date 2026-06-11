@@ -386,6 +386,7 @@ _EN = {
     "暖色": "Warm",
     "寒色": "Cool",
     "4色刷り風": "4-color print",
+    "色刷り(紺×橙)": "Color print (navy/orange)",
     # ── 分類名の編集（v1.71）──
     "分類名の編集": "Edit category names",
     "✏ 分類名を編集": "✏ Edit category names",

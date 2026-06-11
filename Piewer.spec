@@ -8,8 +8,11 @@ a = Analysis(
     ['manga_viewer.py'],
     pathex=[],
     binaries=[],
-    datas=[('piewer.ico', '.')],   # アイコンを実行ファイルに同梱
-    hiddenimports=['fitz', 'auto_tag', 'folder_view'],   # PyMuPDF / 関数内importの自作モジュール
+    datas=[('piewer.ico', '.'),
+           ('plugins', 'plugins'),    # 同梱プラグイン（AI着色のリファレンス等）
+           ('tools', 'tools')],       # Piewerが起動するローカル着色サーバ
+    hiddenimports=['fitz', 'auto_tag', 'folder_view',
+                   'plugins', 'ai_color', 'ai_server', 'ai_runtime'],   # PyMuPDF / 関数内importの自作モジュール
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

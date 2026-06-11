@@ -60,7 +60,7 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 COVER_GEN_W, COVER_GEN_H = 210, 290
 CARD_SPACING = 16
 APP_NAME = "Piewer"
-APP_VERSION = "1.72"
+APP_VERSION = "1.80"
 # 完全無料・オープンソース。登録数の制限はなし。寄付（任意）の受け口。
 SUPPORT_URL = "https://ko-fi.com/p_almighty"   # 寄付（Ko-fi）。後で差し替え可
 # 履歴棚（最近読んだ本）
@@ -183,6 +183,7 @@ class Settings:
         self.auto_tag_on_add = False  # 本の追加時にファイル名から自動タグ付け（実験的）
         self.tag_labels = {}          # オートタグ分類名の上書き {役割キー:表示名}（空=既定）
         self.image_fx = {}            # 画質補正/擬似カラー化の設定（空=既定OFF。image_fx.DEFAULT参照）
+        self.ai_color = {}            # AI着色（プラグイン）の設定（空=既定OFF。ai_color.DEFAULT参照）
         self.accent = "violet"        # アクセント色プリセット名
         self.theme = "dark"           # テーマ: "dark" / "light"
         self.lang = ""              # ""=未設定(初回にOSロケールから判定) / "ja" / "en"
@@ -215,6 +216,9 @@ class Settings:
                 fx = d.get("image_fx")
                 if isinstance(fx, dict):
                     self.image_fx = fx
+                ac = d.get("ai_color")
+                if isinstance(ac, dict):
+                    self.ai_color = ac
                 self.accent = str(d.get("accent", "violet"))
                 if d.get("theme") in ("dark", "light"):
                     self.theme = d["theme"]
@@ -238,7 +242,7 @@ class Settings:
                         "drag_zoom": self.drag_zoom, "browse_path": self.browse_path,
                         "auto_tag_on_add": self.auto_tag_on_add, "accent": self.accent,
                         "tag_labels": self.tag_labels, "image_fx": self.image_fx,
-                        "theme": self.theme,
+                        "ai_color": self.ai_color, "theme": self.theme,
                         "shortcuts": self.shortcuts},
                        ensure_ascii=False),
             encoding="utf-8")
@@ -276,7 +280,7 @@ class Settings:
         self.shelf_open_pos = "remember"; self.wheel_mode = "zoom"
         self.resume_mode = "continue"; self.drag_zoom = True
         self.auto_tag_on_add = False
-        self.tag_labels = {}; self.image_fx = {}
+        self.tag_labels = {}; self.image_fx = {}; self.ai_color = {}
         self.shortcuts = default_shortcuts()
         self._load(); set_covers_dir(self.covers_dir)
 

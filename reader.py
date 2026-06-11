@@ -5,13 +5,16 @@ from PySide6.QtWidgets import (
     QScroller, QApplication
 )
 from PySide6.QtCore import (Qt, Signal, QTimer, QEvent, QPoint, QRect, QElapsedTimer,
-                            QPropertyAnimation, QEasingCurve, QAbstractAnimation)
+                            QPropertyAnimation, QEasingCurve, QAbstractAnimation,
+                            QThreadPool, QRunnable, QObject)
 from PySide6.QtGui import QPixmap, QPainter, QColor, QImage, QFont, QPen, QKeySequence, QPolygon
 
 from config import PageSource, DEFAULT_SHORTCUTS
 from image_utils import bytes_to_pixmap, combine_spread, apply_exif
 import image_utils
 import image_fx
+import ai_color
+import ai_server
 from widgets import FlatBtn, ToggleBtn
 from i18n import t
 
@@ -923,6 +926,72 @@ class WebtoonView(QScrollArea):
         self._load_timer.start(60)
 
 
+class _AiColorSignals(QObject):
+    done = Signal(int, int, bool)   # (page_index, generation, success)
+
+
+class _AiColorWorker(QRunnable):
+    """1ページをバックグラウンドで着色してキャッシュに保存する（UIを止めない）。
+
+    重い処理はプラグイン側。ここはワーカースレッドで ai_color.colorize_to_cache を
+    呼ぶだけ。結果は done シグナルで通知（成否のみ。画像はディスクキャッシュ経由で渡す）。
+    """
+
+    def __init__(self, idx: int, raw: bytes, cfg: dict, gen: int):
+        super().__init__()
+        self.idx = idx; self.raw = raw; self.cfg = cfg; self.gen = gen
+        self.signals = _AiColorSignals()
+
+    def run(self):
+        ok = False
+        try:
+            ok = ai_color.colorize_to_cache(self.raw, self.cfg) is not None
+        except Exception:
+            ok = False
+        self.signals.done.emit(self.idx, self.gen, ok)
+
+
+class _BatchColorSignals(QObject):
+    progress = Signal(int, int)         # (done, total)
+    finished = Signal(int, int, bool)   # (ok, total, cancelled)
+
+
+class _BatchColorWorker(QRunnable):
+    """本の全ページをまとめて着色しキャッシュに溜める（UIを止めない）。
+
+    自前で PageSource を開き、UIスレッドのソースとファイルハンドルを共有しない
+    （PDFの doc ハンドルは非スレッドセーフなため、別インスタンスにして安全にする）。
+    """
+
+    def __init__(self, path: str, cfg: dict, gen: int, reader):
+        super().__init__()
+        self.path = path; self.cfg = cfg; self.gen = gen; self.reader = reader
+        self.signals = _BatchColorSignals()
+
+    def run(self):
+        try:
+            src = PageSource(self.path)
+            total = len(src)
+        except Exception:
+            self.signals.finished.emit(0, 0, False); return
+        ok = 0
+        for i in range(total):
+            # 本/設定が変わった or 中止が押されたら止める
+            if self.reader._batch_cancel or self.gen != self.reader._ai_gen:
+                src.close(); self.signals.finished.emit(ok, total, True); return
+            try:
+                raw = src.read(i)
+                if ai_color.cached_bytes(raw, self.cfg) is not None:
+                    ok += 1
+                elif ai_color.colorize_to_cache(raw, self.cfg) is not None:
+                    ok += 1
+            except Exception:
+                pass
+            self.signals.progress.emit(i + 1, total)
+        src.close()
+        self.signals.finished.emit(ok, total, False)
+
+
 class ReaderView(QWidget):
     back_requested = Signal()
     bookmark_changed = Signal(str, list)   # (book_id, bookmarks)
@@ -951,6 +1020,12 @@ class ReaderView(QWidget):
         self._hud_visible: bool = True
         self._px_cache: dict = {}        # ページpixmapのLRUキャッシュ
         self._px_cache_order: list = []
+        # AI着色（プラグイン）の非同期実行。pool は1スレッド＝順番に処理（GPU/費用を抑制）
+        self._ai_pool = QThreadPool(); self._ai_pool.setMaxThreadCount(1)
+        self._ai_inflight: set[int] = set()   # 着色をキュー/実行中のページ番号
+        self._ai_gen: int = 0                 # 本/設定が変わったら++して古い結果を捨てる
+        self._ai_failed: bool = False         # 直近の着色が失敗したか（バッジ表示用）
+        self._batch_cancel: bool = False      # 全ページ着色の中止フラグ
         self._setup_ui()
 
     def _setup_ui(self):
@@ -1025,6 +1100,9 @@ class ReaderView(QWidget):
         self._fx_btn = fb("🎨 画質", self._open_image_fx)
         tip(self._fx_btn, "画質補正・擬似カラー化（疑似色刷り）の設定")
         tb.addWidget(self._fx_btn)
+        self._ai_btn = fb("🤖 AI着色", self._open_ai_color)
+        tip(self._ai_btn, "AI着色（プラグイン）の設定。プラグインを入れると白黒ページを着色できます")
+        tb.addWidget(self._ai_btn)
         tb.addStretch()
 
         self._rtl_btn    = tb_tog("右→左",    True,  self._on_rtl)
@@ -1064,6 +1142,13 @@ class ReaderView(QWidget):
         self._hint.setVisible(False)
         self._hint_timer = QTimer(self); self._hint_timer.setSingleShot(True)
         self._hint_timer.timeout.connect(self._hide_hint)
+
+        # AI着色の状態バッジ（着色中／失敗を右上に小さく表示）
+        self._ai_badge = QLabel("", self)
+        self._ai_badge.setStyleSheet(
+            "background:rgba(20,20,20,220);color:#cbb8ff;font-size:13px;"
+            "border:1px solid #a06cff;border-radius:14px;padding:5px 14px;")
+        self._ai_badge.setVisible(False)
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._set_hud_visible(False)
@@ -1391,6 +1476,8 @@ class ReaderView(QWidget):
     def load_book(self, book: dict, source: PageSource, start_page: int = -1):
         self._anim.stop()        # 別の本のアニメ再生を止める
         image_utils.set_fx(self.settings.image_fx)   # 画質補正/擬似カラー化を反映
+        self._ai_gen += 1; self._ai_inflight.clear()   # 前の本のAI着色を打ち切る
+        self._ai_failed = False; self._ai_badge.setVisible(False)
         self.book_id = book["id"]; self.source = source
         self._bookmarks = sorted(int(p) for p in book.get("bookmarks", []))
         self._clear_px_cache()   # 別の本のページが残らないようにクリア
@@ -1585,12 +1672,17 @@ class ReaderView(QWidget):
         self._page_input.clear()
         self.setFocus()
 
-    def _load_page_px(self, idx: int) -> QPixmap:
+    def _load_page_px(self, idx: int, enqueue: bool = False) -> QPixmap:
         if not self.source or idx < 0 or idx >= len(self.source): return QPixmap()
         image_utils.set_fx(self.settings.image_fx)   # 画質補正/擬似カラー化を反映
         # デコード済みページをLRUキャッシュ（連続ページ送り・往復を高速化）
         key = (idx, self.spread_mode, self.spread_offset, self.rtl_mode,
-               image_fx.signature(self.settings.image_fx))
+               image_fx.signature(self.settings.image_fx),
+               ai_color.signature(self.settings.ai_color))
+        # AI着色ONなら、px キャッシュにヒットするか否かに関係なく未着色ページの着色を予約する。
+        # （先読みが原画pixmapをキャッシュしていても、表示時にちゃんと着色が走るように）
+        if enqueue:
+            self._ensure_colorize(idx)
         cached = self._px_cache.get(key)
         if cached is not None:
             return cached
@@ -1598,10 +1690,10 @@ class ReaderView(QWidget):
         target_h = self._display.height()
         try:
             if self._is_spread_start(idx):
-                px = combine_spread(self.source.read(idx), self.source.read(idx + 1),
+                px = combine_spread(self._page_bytes(idx), self._page_bytes(idx + 1),
                                     self.rtl_mode, target_h)
             else:
-                px = bytes_to_pixmap(self.source.read(idx), target_h)
+                px = bytes_to_pixmap(self._page_bytes(idx), target_h)
         except Exception:
             return QPixmap()
         self._px_cache[key] = px
@@ -1629,6 +1721,156 @@ class ReaderView(QWidget):
             self._webtoon.reload_fx()
         else:
             self._show_current()
+
+    # ── AI着色（プラグイン・非同期） ────────────────────────
+
+    def _page_bytes(self, idx: int) -> bytes:
+        """ページのバイト列を返す。AI着色ONで着色済みキャッシュがあればそれを、無ければ原画。"""
+        raw = self.source.read(idx)
+        if not ai_color.active(self.settings.ai_color):
+            return raw
+        colored = ai_color.cached_bytes(raw, self.settings.ai_color)
+        return colored if colored is not None else raw
+
+    def _ensure_colorize(self, idx: int):
+        """このページ（見開きなら2枚）が未着色なら、バックグラウンド着色を予約する。"""
+        if not ai_color.active(self.settings.ai_color):
+            return
+        if not ai_color.signature(self.settings.ai_color):
+            return
+        pages = [idx]
+        if self._is_spread_start(idx):
+            pages.append(idx + 1)
+        for i in pages:
+            if i in self._ai_inflight:
+                continue
+            try:
+                raw = self.source.read(i)
+            except Exception:
+                continue
+            if ai_color.cached_bytes(raw, self.settings.ai_color) is None:
+                self._queue_colorize(i, raw)
+
+    def _queue_colorize(self, idx: int, raw: bytes):
+        if idx in self._ai_inflight:
+            return
+        # プラグインが見つからない設定なら何もしない（signature が空になる）
+        if not ai_color.signature(self.settings.ai_color):
+            return
+        self._ai_inflight.add(idx)
+        self._ai_failed = False
+        worker = _AiColorWorker(idx, raw, dict(self.settings.ai_color), self._ai_gen)
+        worker.signals.done.connect(self._on_colorized)
+        self._ai_pool.start(worker)
+        self._update_ai_badge()
+
+    def _on_colorized(self, idx: int, gen: int, ok: bool):
+        if gen != self._ai_gen:
+            return   # 別の本/設定に切り替わった後に届いた古い結果は無視
+        self._ai_inflight.discard(idx)
+        if ok:
+            # キャッシュに色付きが入った。該当pixmapを捨てて、表示中なら描き直す。
+            self._clear_px_cache()
+            self._next_px = self._prev_px = None
+            if self.source and not self.webtoon_mode:
+                self._show_current()
+        else:
+            self._ai_failed = True
+        self._update_ai_badge()
+
+    def _update_ai_badge(self):
+        """着色中／失敗／サーバ状態のバッジを右上に表示。アイドルかつ正常なら隠す。"""
+        mgr = ai_server.get_manager()
+        ai_on = ai_color.active(self.settings.ai_color)
+        if ai_on and mgr.status == ai_server.ColorServerManager.STARTING:
+            self._ai_badge.setText(t("🤖 着色サーバ起動中…（初回はモデル読込で時間がかかります）"))
+        elif ai_on and mgr.status == ai_server.ColorServerManager.ERROR:
+            self._ai_badge.setText(t("🤖 サーバエラー: ") + mgr.message[:80])
+        elif self._ai_inflight:
+            self._ai_badge.setText(t("🤖 AI着色中…"))
+        elif self._ai_failed:
+            self._ai_badge.setText(t("🤖 着色に失敗しました（設定/接続を確認）"))
+        else:
+            self._ai_badge.setVisible(False)
+            return
+        self._ai_badge.adjustSize()
+        self._ai_badge.move(max(8, self.width() - self._ai_badge.width() - 16), 62)
+        self._ai_badge.setVisible(True)
+        self._ai_badge.raise_()
+
+    def _open_ai_color(self, *_):
+        from widgets import AiColorDialog
+        AiColorDialog(self.settings, on_change=self.apply_ai_color, reader=self, parent=self).exec()
+
+    def apply_ai_color(self):
+        """AI着色の設定変更を反映（進行中の着色を無効化＋キャッシュ破棄＋再描画）。"""
+        self._ai_gen += 1                 # 進行中ワーカーの結果を無効化
+        self._ai_inflight.clear()
+        self._ai_failed = False
+        self._clear_px_cache()
+        self._next_px = self._prev_px = None
+        self._sync_managed_server()       # Piewer管理サーバの起動/停止＆endpoint同期
+        self._update_ai_badge()
+        if not self.source:
+            return
+        if not self.webtoon_mode:
+            self._show_current()
+
+    def _sync_managed_server(self):
+        """設定に応じてローカル着色サーバを起動/停止する（Piewerがサーバを管理する場合）。"""
+        cfg = ai_color.merge(self.settings.ai_color)
+        sv = cfg["server"]
+        mgr = ai_server.get_manager()
+        if not getattr(self, "_ai_srv_connected", False):
+            mgr.status_changed.connect(self._on_server_status)
+            self._ai_srv_connected = True
+        if cfg["on"] and sv.get("manage"):
+            if mgr.is_running():
+                self._on_server_status(ai_server.ColorServerManager.RUNNING, "")  # 起動済→即同期
+            elif not mgr.is_active():
+                mgr.start(python=sv.get("python", ""), repo=sv.get("repo", ""),
+                          device=sv.get("device", "cpu"), port=int(sv.get("port", 7860)),
+                          saturation=float(sv.get("saturation", 1.0)))
+        elif mgr.is_active():
+            mgr.stop()
+
+    def _on_server_status(self, status: str, msg: str):
+        # サーバが起動完了したら、起動待ちで失敗していたページを描き直して再着色する。
+        # （接続先URLは manage時にポートから自動導出済みなので endpoint 同期は不要）
+        if status == ai_server.ColorServerManager.RUNNING:
+            self._ai_failed = False
+            self._clear_px_cache(); self._next_px = self._prev_px = None
+            if self.source and not self.webtoon_mode:
+                self._show_current()
+        self._update_ai_badge()
+
+    def start_batch_colorize(self, on_progress, on_finished) -> bool:
+        """開いている本の全ページを着色してキャッシュに溜める。開始できたら True。
+
+        表示用キャッシュと同じキーで溜めるので、有効化ONなら見たページが即色付きになる。
+        """
+        if not self.source:
+            return False
+        cfg = dict(self.settings.ai_color or {}); cfg["on"] = True
+        if not ai_color.signature(cfg):   # プラグイン/接続先が未設定
+            return False
+        self._batch_cancel = False
+        worker = _BatchColorWorker(self.source.path, cfg, self._ai_gen, self)
+        worker.signals.progress.connect(on_progress)
+
+        def _fin(ok, total, cancelled):
+            # 溜めた着色を表示へ反映（今見ているページを描き直す）
+            self._clear_px_cache(); self._next_px = self._prev_px = None
+            if self.source and not self.webtoon_mode:
+                self._show_current()
+            on_finished(ok, total, cancelled)
+
+        worker.signals.finished.connect(_fin)
+        self._ai_pool.start(worker)
+        return True
+
+    def cancel_batch(self):
+        self._batch_cancel = True
 
     def next_page(self):
         if not self.source: return
@@ -1682,7 +1924,8 @@ class ReaderView(QWidget):
         if self.webtoon_mode:
             self._sync_hud(); return
         # 現在ページを即座にデコードして表示（隣接ページの先読みは後回し）
-        cur = self._load_page_px(self.current_index)
+        # enqueue=True: AI着色ONかつ未キャッシュなら、表示中ページの着色をバックグラウンド開始
+        cur = self._load_page_px(self.current_index, enqueue=True)
         self._display.set_current(cur, QPixmap(), -1)
         self._display.set_fit(self.fit_mode)
         self._sync_hud()
@@ -1735,6 +1978,9 @@ class ReaderView(QWidget):
         self._thumb_strip.setGeometry(0, h - PageThumbStrip.STRIP_H, w, PageThumbStrip.STRIP_H)
         self._toolbar_w.raise_()
         self._thumb_strip.raise_()
+        if self._ai_badge.isVisible():
+            self._ai_badge.move(max(8, w - self._ai_badge.width() - 16), 62)
+            self._ai_badge.raise_()
         if self._grid.isVisible():
             tb_h = self._toolbar_w.height()
             self._grid.setGeometry(0, tb_h, w, max(0, h - tb_h))

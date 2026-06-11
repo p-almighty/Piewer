@@ -2,9 +2,12 @@ from PySide6.QtWidgets import (QWidget, QLabel, QFrame, QHBoxLayout, QPushButton
                                QDialog, QVBoxLayout, QTextBrowser, QGridLayout,
                                QScrollArea, QLineEdit, QCompleter, QLayout,
                                QInputDialog, QMessageBox, QCheckBox,
-                               QTreeWidget, QTreeWidgetItem, QSlider, QComboBox)
+                               QTreeWidget, QTreeWidgetItem, QSlider, QComboBox,
+                               QSpinBox, QDoubleSpinBox, QFileDialog,
+                               QProgressBar, QPlainTextEdit, QProgressDialog)
 from PySide6.QtCore import (Qt, Signal, QPoint, QRect, QSize, QTimer,
-                            QPropertyAnimation, QEasingCurve)
+                            QPropertyAnimation, QEasingCurve,
+                            QObject, QRunnable, QThreadPool)
 from PySide6.QtGui import (QPixmap, QPainter, QColor, QFont, QKeySequence, QPainterPath,
                            QStandardItemModel, QStandardItem)
 # 注: 配色・角丸の各値は theme.py に集約。以下のインラインQSSもその値に揃えている。
@@ -14,6 +17,7 @@ import i18n
 from i18n import t
 import theme
 import unicodedata
+from pathlib import Path
 
 
 def fold_text(s: str) -> str:
@@ -490,6 +494,9 @@ def show_global_settings(win, parent=None):
     action(t("🎨  画質補正・擬似カラー化"),
            t("白黒/カラーのページを見やすく補正し、お好みで“色刷り風”に着色します。"),
            lambda: ImageFxDialog(s, on_change=_fx_changed, parent=dlg).exec())
+    action(t("🤖  AI着色"),
+           t("プラグインで白黒ページを着色します。接続先（ローカル/クラウド）などの設定はこちら。"),
+           lambda: AiColorConfigDialog(s, parent=dlg).exec())
 
     # ── タグ ──
     sub(t("🏷  タグ"))
@@ -1238,6 +1245,1047 @@ class ImageFxDialog(QDialog):
         self.settings.save()
         if self._on_change:
             self._on_change()
+
+
+class _ColorTestSignals(QObject):
+    done = Signal(bool, str)   # (成功か, メッセージ)
+
+
+class _ColorTestWorker(QRunnable):
+    """設定した着色プラグインに小さなテスト画像を送り、繋がるか確認する（UIを止めない）。"""
+
+    def __init__(self, provider, opts: dict):
+        super().__init__()
+        self.provider = provider; self.opts = opts
+        self.signals = _ColorTestSignals()
+
+    def run(self):
+        try:
+            from PIL import Image
+            # 64x96 のグレーのグラデーション（白黒ページの代わり）
+            test = Image.new("L", (64, 96))
+            px = test.load()
+            for y in range(96):
+                for x in range(64):
+                    px[x, y] = int((x / 63) * 255)
+            out = self.provider.colorize(test.convert("RGB"), dict(self.opts))
+            if out is None:
+                self.signals.done.emit(False, t("着色結果が空でした。"))
+            else:
+                self.signals.done.emit(True, t("接続成功。着色サーバから画像を受け取れました。"))
+        except Exception as e:
+            self.signals.done.emit(False, str(e))
+
+
+_AI_QSS = """
+    QDialog { background:#262032; }
+    QLabel { color:#ddd; font-size:13px; background:transparent; }
+    QCheckBox { color:#ddd; font-size:13px; background:transparent; }
+    QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox { background:#2b2539; color:#ddd;
+                border:1px solid #463d63; border-radius:10px; padding:5px 10px; font-size:13px; }
+    QComboBox QAbstractItemView { background:#2b2539; color:#ddd;
+                selection-background-color:#a06cff; }
+    QPushButton { background:#322b45; color:#ddd; border:1px solid #463d63;
+                  border-radius:10px; padding:6px 14px; font-size:12px; }
+    QPushButton:hover { background:#423a5a; }
+    QPushButton#close { background:#a06cff; color:white; border:none; padding:7px 24px; }
+    QPushButton#close:hover { background:#b488ff; }
+"""
+
+
+class _AiCacheMixin:
+    """着色データ（ディスクキャッシュ）の容量表示＋全削除（両ダイアログ共通）。"""
+
+    def _build_cache_row(self, lay):
+        crow = QHBoxLayout(); crow.setSpacing(8)
+        self._cache_lbl = QLabel("")
+        self._cache_lbl.setStyleSheet("color:#bfa6ff;font-size:12px;background:transparent;")
+        crow.addWidget(self._cache_lbl, 1)
+        btn = QPushButton(t("着色データを削除")); btn.clicked.connect(self._clear_cache_clicked)
+        crow.addWidget(btn); lay.addLayout(crow)
+        self._update_cache_label()
+
+    def _update_cache_label(self):
+        import ai_color
+        mb = ai_color.cache_size_bytes() / (1024 * 1024)
+        self._cache_lbl.setText(t("着色データ: {mb:.1f} MB").format(mb=mb))
+
+    def _clear_cache_clicked(self, *_):
+        import ai_color
+        if ai_color.cache_size_bytes() <= 0:
+            self._cache_lbl.setText(t("着色データ: 0.0 MB（削除するものはありません）"))
+            return
+        if QMessageBox.question(self, t("着色データの削除"),
+                                t("保存済みの着色データを全て削除しますか？\n"
+                                  "（次に開いたページから再着色されます）"),
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                                ) != QMessageBox.StandardButton.Yes:
+            return
+        ai_color.clear_cache()
+        self._update_cache_label()
+        r = getattr(self, "_reader", None)
+        if r is not None:
+            r.apply_ai_color()   # 表示中のキャッシュも破棄→再描画/再着色
+
+
+class _MoveWorker(QObject):
+    """保存先の移動をバックグラウンドで行うワーカー（進捗をsignalで通知）。"""
+
+    progress = Signal(int)     # 0..100
+    finished = Signal(bool)    # 成否
+
+    def __init__(self, new_base):
+        super().__init__()
+        self._new = new_base
+        self._cancel = False
+        self._last = -1
+
+    def cancel(self):
+        self._cancel = True
+
+    def run(self):
+        import ai_runtime
+
+        def pcb(done, total):
+            pct = int(done * 100 / total) if total else 0
+            if pct != self._last:
+                self._last = pct
+                self.progress.emit(pct)
+
+        try:
+            ok = ai_runtime.move_base_dir_progress(self._new, pcb, lambda: self._cancel)
+        except Exception:
+            ok = False
+        self.finished.emit(ok)
+
+
+class AiRuntimeSetupDialog(QDialog):
+    """AI着色ランタイムの自動構築ウィザード（フェーズB）。
+
+    standalone Python → torch等 → 着色プログラム → 重み を `~/.manga_viewer/ai_runtime/`
+    に自動で用意する。完了するとサーバ設定（python/repo/device）を自動入力する。
+    重みの自動DLが失敗したときは、ブラウザでリンクを開いて手動で配置できる。
+    """
+
+    def __init__(self, settings, on_done=None, parent=None):
+        super().__init__(parent)
+        import ai_runtime
+        import ai_server
+        import ai_color
+        self.settings = settings
+        self._on_done = on_done
+        self._builder = None
+        self._rows: dict = {}
+        # 保存先を設定から復元（既定は ~/.manga_viewer/ai_runtime）
+        _sv0 = ai_color.merge(getattr(settings, "ai_color", {}) or {})["server"]
+        ai_runtime.set_base_dir(_sv0.get("runtime_dir") or "")
+        self.setWindowTitle(t("🤖 AI着色を自動で準備"))
+        self.setMinimumWidth(540)
+        self.setStyleSheet(_AI_QSS)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(9)
+
+        self._note = QLabel("")
+        self._note.setWordWrap(True)
+        self._note.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        lay.addWidget(self._note)
+
+        warn = QLabel(t("※ ダウンロード量が大きく（GPU版は約2.5GB／CPU版は約300MB）、回線により"
+                        "数分〜十数分かかります。GPUを使うには NVIDIA ドライバが必要です。"))
+        warn.setWordWrap(True); warn.setStyleSheet("color:#c8a24a;font-size:11px;background:transparent;")
+        lay.addWidget(warn)
+
+        # 保存先
+        lrow = QHBoxLayout(); lrow.setSpacing(8)
+        llb = QLabel(t("保存先")); llb.setMinimumWidth(60); lrow.addWidget(llb)
+        self._loc_edit = QLineEdit(); self._loc_edit.setReadOnly(True)
+        lrow.addWidget(self._loc_edit, 1)
+        locb = QPushButton(t("変更")); locb.clicked.connect(self._change_location)
+        lrow.addWidget(locb); lay.addLayout(lrow)
+        self._update_location_labels()
+
+        # 処理（GPU/CPU）
+        drow = QHBoxLayout(); drow.setSpacing(8)
+        drow.addWidget(QLabel(t("処理")))
+        self._dev_cb = QComboBox()
+        self._dev_cb.addItem(t("GPU (CUDA・速い)"), "cuda")
+        self._dev_cb.addItem(t("CPU（遅い・GPU無しでも可）"), "cpu")
+        raw = getattr(settings, "ai_color", {}) or {}
+        raw_sv = raw.get("server") if isinstance(raw.get("server"), dict) else {}
+        dev = raw_sv.get("device") or ("cuda" if ai_server.has_nvidia_gpu() else "cpu")
+        di = self._dev_cb.findData(dev); self._dev_cb.setCurrentIndex(di if di >= 0 else 0)
+        drow.addWidget(self._dev_cb, 1); lay.addLayout(drow)
+
+        # ステップ一覧
+        steps_box = QVBoxLayout(); steps_box.setSpacing(3)
+        for key, label in ai_runtime.STEPS:
+            row = QHBoxLayout(); row.setSpacing(8)
+            dot = QLabel("○"); dot.setFixedWidth(18)
+            dot.setStyleSheet("color:#6f6690;font-size:14px;background:transparent;")
+            name = QLabel(t(label)); name.setMinimumWidth(170)
+            name.setStyleSheet("color:#ddd;font-size:12px;background:transparent;")
+            st = QLabel(""); st.setWordWrap(True)
+            st.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+            row.addWidget(dot); row.addWidget(name); row.addWidget(st, 1)
+            steps_box.addLayout(row)
+            self._rows[key] = (dot, st)
+        lay.addLayout(steps_box)
+
+        self._bar = QProgressBar(); self._bar.setRange(0, 100); self._bar.setValue(0)
+        self._bar.setTextVisible(False); self._bar.setFixedHeight(8)
+        lay.addWidget(self._bar)
+
+        self._log = QPlainTextEdit(); self._log.setReadOnly(True)
+        self._log.setFixedHeight(110)
+        self._log.setStyleSheet("background:#1e1930;color:#9a8fb8;font-size:10px;"
+                                "border:1px solid #463d63;border-radius:8px;")
+        lay.addWidget(self._log)
+
+        # ボタン列
+        brow = QHBoxLayout(); brow.setSpacing(8)
+        self._manual_btn = QPushButton(t("重みを手動で配置"))
+        self._manual_btn.clicked.connect(self._manual_weights)
+        brow.addWidget(self._manual_btn)
+        brow.addStretch()
+        self._start_btn = QPushButton(t("構築開始")); self._start_btn.setObjectName("close")
+        self._start_btn.clicked.connect(self._start)
+        brow.addWidget(self._start_btn)
+        self._close_btn = QPushButton(t("閉じる")); self._close_btn.clicked.connect(self.reject)
+        brow.addWidget(self._close_btn)
+        lay.addLayout(brow)
+
+        self._refresh_status()
+
+    # ── 保存先 ──────────────────────────────────────────────
+
+    def _update_location_labels(self):
+        import ai_runtime
+        base = str(ai_runtime.base_dir())
+        self._loc_edit.setText(base)
+        self._loc_edit.setToolTip(base)
+        self._note.setText(t("AI着色に必要な一式（実行用Python・AIライブラリ・着色プログラム・モデル）を"
+                             "自動でダウンロードして下記の保存先に用意します。"))
+
+    def _change_location(self, *_):
+        import ai_runtime
+        if self._builder is not None and self._builder.is_running():
+            return
+        d = QFileDialog.getExistingDirectory(self, t("保存先フォルダを選択（この中に専用フォルダを作成）"))
+        if not d:
+            return
+        new_base = str(Path(d) / ai_runtime.SUBDIR_NAME)
+        old_base = str(ai_runtime.base_dir())
+        if Path(new_base).resolve() == Path(old_base).resolve():
+            return
+        # 既に構築済みのものがあれば「移動」を提案
+        moved = False
+        any_built = any(ai_runtime.status(self._dev_cb.currentData() or "cpu").values())
+        if any_built and ai_runtime.base_dir().exists():
+            ans = QMessageBox.question(
+                self, t("保存先の変更"),
+                t("構築済みのファイルを新しい保存先へ移動しますか？\n"
+                  "「いいえ」を選ぶと、新しい保存先で最初から構築し直します。\n\n"
+                  "移動先: {dst}").format(dst=new_base),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel)
+            if ans == QMessageBox.StandardButton.Cancel:
+                return
+            if ans == QMessageBox.StandardButton.Yes:
+                ok = self._move_with_progress(new_base)
+                if not ok:
+                    return   # 失敗/中止時の案内は _move_with_progress 内で実施
+                moved = True
+        if not moved:
+            ai_runtime.set_base_dir(new_base)
+        self._persist_location()
+        self._update_location_labels()
+        self._refresh_status()
+
+    def _move_with_progress(self, new_base) -> bool:
+        """構築済みファイルの移動を別スレッドで実行し、進捗ダイアログを表示する。"""
+        import threading
+        nb = Path(new_base)
+        if nb.exists() and any(nb.iterdir()):
+            QMessageBox.warning(self, t("保存先の変更"),
+                                t("移動先が既に使われています。別のフォルダを選んでください。"))
+            return False
+        dlg = QProgressDialog(t("構築済みファイルを新しい保存先へ移動しています…"),
+                              t("中止"), 0, 100, self)
+        dlg.setWindowTitle(t("保存先の変更"))
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setAutoClose(False); dlg.setAutoReset(False); dlg.setMinimumDuration(0)
+        dlg.setValue(0)
+        worker = _MoveWorker(new_base)
+        self._move_worker = worker   # GC防止
+        state = {"ok": False}
+        worker.progress.connect(dlg.setValue)
+
+        def _fin(ok):
+            state["ok"] = ok
+            dlg.reset()
+        worker.finished.connect(_fin)
+        dlg.canceled.connect(worker.cancel)
+        th = threading.Thread(target=worker.run, daemon=True)
+        th.start()
+        dlg.exec()
+        th.join(5)
+        if not state["ok"]:
+            QMessageBox.warning(
+                self, t("保存先の変更"),
+                t("移動できませんでした（中止された、または移動先が使用中の可能性があります）。"))
+        return state["ok"]
+
+    def _persist_location(self):
+        """保存先と（構築済みなら）派生パスを設定へ書き込む。"""
+        import ai_color
+        import ai_runtime
+        cur = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})
+        sv = cur["server"]
+        sv["runtime_dir"] = str(ai_runtime.base_dir())
+        if ai_runtime.is_ready():
+            sv["python"] = str(ai_runtime.runtime_python_exe())
+            sv["repo"] = str(ai_runtime.runtime_repo_dir())
+        cur["server"] = sv
+        self.settings.ai_color = dict(cur)
+        self.settings.save()
+
+    # ── 状態表示 ────────────────────────────────────────────
+
+    def _refresh_status(self):
+        import ai_runtime
+        dev = self._dev_cb.currentData() or "cpu"
+        stt = ai_runtime.status(dev)
+        for key, (dot, lbl) in self._rows.items():
+            done = stt.get(key, False)
+            dot.setText("●" if done else "○")
+            dot.setStyleSheet(("color:#7fd6a0" if done else "color:#6f6690")
+                              + ";font-size:14px;background:transparent;")
+            if done and not lbl.text():
+                lbl.setText(t("導入済み"))
+        if ai_runtime.is_ready(dev):
+            self._start_btn.setText(t("再構築"))
+
+    def _set_step(self, key: str, status: str, msg: str):
+        if key not in self._rows:
+            return
+        dot, lbl = self._rows[key]
+        sym = {"running": "◐", "done": "●", "skipped": "●", "error": "✕"}.get(status, "○")
+        col = {"running": "#bfa6ff", "done": "#7fd6a0", "skipped": "#7fd6a0",
+               "error": "#e08a7f"}.get(status, "#6f6690")
+        dot.setText(sym)
+        dot.setStyleSheet(f"color:{col};font-size:14px;background:transparent;")
+        lbl.setStyleSheet(f"color:{col};font-size:11px;background:transparent;")
+        lbl.setText(msg)
+
+    # ── 構築 ────────────────────────────────────────────────
+
+    def _start(self, *_):
+        import ai_runtime
+        if self._builder is not None and self._builder.is_running():
+            return
+        dev = self._dev_cb.currentData() or "cpu"
+        self._log.clear()
+        self._bar.setRange(0, 0)   # 不定（開始直後）
+        self._dev_cb.setEnabled(False)
+        self._start_btn.setEnabled(False)
+        self._manual_btn.setEnabled(False)
+        self._close_btn.setText(t("中止"))
+        self._builder = ai_runtime.RuntimeBuilder(self)
+        self._builder.step_status.connect(self._set_step)
+        self._builder.progress.connect(self._on_progress)
+        self._builder.log.connect(self._on_log)
+        self._builder.finished.connect(self._on_finished)
+        self._builder.start(device=dev)
+
+    def _on_progress(self, pct: int):
+        if pct < 0:
+            self._bar.setRange(0, 0)   # 不定
+        else:
+            self._bar.setRange(0, 100); self._bar.setValue(pct)
+
+    def _on_log(self, line: str):
+        self._log.appendPlainText(line)
+
+    def _on_finished(self, ok: bool, msg: str):
+        self._bar.setRange(0, 100); self._bar.setValue(100 if ok else 0)
+        self._dev_cb.setEnabled(True)
+        self._start_btn.setEnabled(True)
+        self._manual_btn.setEnabled(True)
+        self._close_btn.setText(t("閉じる"))
+        self._refresh_status()
+        if ok:
+            self._persist_runtime()
+            QMessageBox.information(self, t("AI着色の準備"), t(msg))
+            if self._on_done:
+                self._on_done()
+            self.accept()
+        else:
+            QMessageBox.warning(self, t("AI着色の準備"), t(msg))
+
+    def _persist_runtime(self):
+        """構築できたランタイムをサーバ設定に書き込む（自動起動ONにする）。"""
+        import ai_color
+        import ai_runtime
+        cur = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})
+        sv = cur["server"]
+        sv["manage"] = True
+        sv["python"] = str(ai_runtime.runtime_python_exe())
+        sv["repo"] = str(ai_runtime.runtime_repo_dir())
+        sv["device"] = self._dev_cb.currentData() or "cpu"
+        sv["runtime_dir"] = str(ai_runtime.base_dir())
+        cur["server"] = sv
+        cur["opts"] = {**cur.get("opts", {}),
+                       "endpoint": f"http://127.0.0.1:{sv['port']}/colorize"}
+        self.settings.ai_color = dict(cur)
+        self.settings.save()
+
+    # ── 重みの手動フォールバック ────────────────────────────
+
+    def _manual_weights(self, *_):
+        import ai_runtime
+        if not ai_runtime.repo_ready():
+            QMessageBox.information(
+                self, t("重みを手動で配置"),
+                t("先に「構築開始」で着色プログラムまで用意してください。"))
+            return
+        dlg = _ManualWeightsDialog(self)
+        dlg.exec()
+        self._refresh_status()
+
+    def closeEvent(self, e):
+        if self._builder is not None and self._builder.is_running():
+            if QMessageBox.question(
+                    self, t("構築の中止"),
+                    t("構築を中止しますか？（途中までの内容は保存され、次回は続きから再開できます）"),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    ) != QMessageBox.StandardButton.Yes:
+                e.ignore()
+                return
+            self._builder.cancel()
+        super().closeEvent(e)
+
+    def reject(self):
+        if self._builder is not None and self._builder.is_running():
+            self.close()   # closeEvent の確認に回す
+            return
+        super().reject()
+
+
+class _ManualWeightsDialog(QDialog):
+    """重み（モデルファイル）をブラウザでDLして手動配置するための補助ダイアログ。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        import ai_runtime
+        self.setWindowTitle(t("重みを手動で配置"))
+        self.setMinimumWidth(520)
+        self.setStyleSheet(_AI_QSS)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(9)
+
+        note = QLabel(t("自動DLが失敗する場合は、各ファイルを「リンクを開く」でブラウザから"
+                        "ダウンロードし、「ファイルを選択」で取り込んでください。"))
+        note.setWordWrap(True); note.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        lay.addWidget(note)
+
+        self._labels = []
+        for i, (fid, rel, label) in enumerate(ai_runtime.WEIGHTS):
+            box = QVBoxLayout(); box.setSpacing(4)
+            head = QLabel(t(label)); head.setStyleSheet(
+                "color:#bfa6ff;font-size:12px;font-weight:bold;background:transparent;")
+            box.addWidget(head)
+            row = QHBoxLayout(); row.setSpacing(8)
+            openb = QPushButton(t("リンクを開く"))
+            openb.clicked.connect(lambda _=False, f=fid: self._open(ai_runtime.gdrive_url(f)))
+            pickb = QPushButton(t("ファイルを選択"))
+            pickb.clicked.connect(lambda _=False, idx=i: self._pick(idx))
+            stat = QLabel(""); stat.setStyleSheet(
+                "color:#8a7fa6;font-size:11px;background:transparent;")
+            row.addWidget(openb); row.addWidget(pickb); row.addWidget(stat, 1)
+            box.addLayout(row); lay.addLayout(box)
+            self._labels.append(stat)
+        self._refresh()
+
+        r = QHBoxLayout(); r.addStretch()
+        close = QPushButton(t("閉じる")); close.setObjectName("close"); close.clicked.connect(self.accept)
+        r.addWidget(close); lay.addLayout(r)
+
+    def _refresh(self):
+        import ai_runtime
+        for i, (fid, rel, label) in enumerate(ai_runtime.WEIGHTS):
+            dest = ai_runtime.REPO_DIR / rel
+            if dest.exists() and dest.stat().st_size > 0:
+                self._labels[i].setStyleSheet("color:#7fd6a0;font-size:11px;background:transparent;")
+                self._labels[i].setText(t("配置済み ✓"))
+            else:
+                self._labels[i].setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+                self._labels[i].setText(t("未配置"))
+
+    @staticmethod
+    def _open(url):
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _pick(self, idx: int):
+        import ai_runtime
+        p, _f = QFileDialog.getOpenFileName(self, t("ダウンロードしたファイルを選択"), "",
+                                            "すべて (*)")
+        if not p:
+            return
+        b = ai_runtime.RuntimeBuilder()
+        if b.place_weight_file(idx, p):
+            self._refresh()
+        else:
+            QMessageBox.warning(self, t("重みを手動で配置"),
+                                t("ファイルの配置に失敗しました。"))
+
+
+class AiColorConfigDialog(_AiCacheMixin, QDialog):
+    """AI着色の接続設定（本棚の⚙設定から開く）。プラグイン選択・接続先・接続テスト・着色データ削除。
+
+    実際の着色はプラグイン側（クラウドAPI / ローカルサーバ / ローカルモデル）。本体は画像を
+    渡して受け取るだけ。設定項目はプラグインが宣言したものを動的に描画する。有効化や全ページ
+    着色は本を開いた状態のメニューから行う（ここには置かない）。
+    """
+
+    def __init__(self, settings, parent=None):
+        super().__init__(parent)
+        import ai_color
+        import ai_runtime
+        import plugins
+        self.settings = settings
+        self._reader = None
+        self._cfg = ai_color.merge(getattr(settings, "ai_color", {}) or {})
+        # 保存先を設定から復元（準備状況の表示を正しい場所で見るため）
+        ai_runtime.set_base_dir(self._cfg["server"].get("runtime_dir") or "")
+        self._providers = plugins.colorizers()
+        self._field_widgets: dict = {}
+        self._pool = QThreadPool.globalInstance()
+        self.setWindowTitle(t("🤖 AI着色（接続設定）"))
+        self.setMinimumWidth(470)
+        self.setStyleSheet(_AI_QSS)
+
+        # 設定項目が多く縦に伸びるので、中身はスクロール領域に入れる（閉じるボタンは下端固定）。
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea{background:transparent;} "
+                             "QScrollArea > QWidget > QWidget{background:transparent;}")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        lay = QVBoxLayout(content); lay.setContentsMargins(18, 16, 18, 6); lay.setSpacing(9)
+
+        note = QLabel(t("白黒ページをプラグイン経由で着色します。送信先をローカル(localhost)に"
+                        "すればオフライン・無料で、画像はPCの外に出ません。"))
+        note.setWordWrap(True); note.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        lay.addWidget(note)
+
+        self._build_server_ui(lay)
+
+        if not self._providers:
+            self._build_no_plugin(lay)
+        else:
+            self._build_plugin_ui(lay)
+
+        self._build_cache_row(lay)
+
+        hint = QLabel(t("※ 有効化と「この本を全ページ着色」は、本を開いた状態のメニュー"
+                        "「🤖 AI着色」から行います。"))
+        hint.setWordWrap(True); hint.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        lay.addWidget(hint)
+        lay.addStretch()
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
+
+        brow = QHBoxLayout(); brow.setContentsMargins(18, 8, 18, 12); brow.addStretch()
+        close = QPushButton(t("閉じる")); close.setObjectName("close"); close.clicked.connect(self.accept)
+        brow.addWidget(close); outer.addLayout(brow)
+
+        self._apply_enabled_state()
+
+        # 画面に収まる高さに調整（はみ出す分はスクロール）
+        screen = self.screen()
+        avail = screen.availableGeometry().height() if screen else 900
+        want = content.sizeHint().height() + 70
+        self.resize(max(self.minimumWidth(), 500), min(want, int(avail * 0.9)))
+
+    # ── 着色サーバ（Piewerが起動）────────────────────────────
+
+    def _build_server_ui(self, lay):
+        import ai_color
+        import ai_server
+        sv = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})["server"]
+
+        sub = QLabel(t("着色サーバ（Piewerが自動で起動）"))
+        sub.setStyleSheet("color:#bfa6ff;font-size:12px;font-weight:bold;background:transparent;")
+        lay.addSpacing(2); lay.addWidget(sub)
+
+        arow = QHBoxLayout(); arow.setSpacing(8)
+        self._setup_btn = QPushButton(t("▶ AI着色を自動で準備する（推奨）"))
+        self._setup_btn.setObjectName("close")
+        self._setup_btn.clicked.connect(self._open_runtime_setup)
+        arow.addWidget(self._setup_btn)
+        self._setup_lbl = QLabel(""); self._setup_lbl.setWordWrap(True)
+        self._setup_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        arow.addWidget(self._setup_lbl, 1); lay.addLayout(arow)
+        self._update_runtime_label()
+
+        self._mng_cb = QCheckBox(t("Piewerでサーバを自動起動する（推奨）"))
+        self._mng_cb.setChecked(bool(sv.get("manage")))
+        self._mng_cb.stateChanged.connect(self._persist)
+        lay.addWidget(self._mng_cb)
+
+        drow = QHBoxLayout(); drow.setSpacing(8)
+        drow.addWidget(QLabel(t("処理")))
+        self._dev_cb = QComboBox()
+        self._dev_cb.addItem(t("GPU (CUDA・速い)"), "cuda")
+        self._dev_cb.addItem(t("CPU（遅い・GPU無しでも可）"), "cpu")
+        # 未設定（初回）のときだけGPUの有無で自動判定。保存済みならそれを尊重。
+        raw = getattr(self.settings, "ai_color", {}) or {}
+        raw_sv = raw.get("server") if isinstance(raw.get("server"), dict) else {}
+        dev = raw_sv.get("device") or ("cuda" if ai_server.has_nvidia_gpu() else "cpu")
+        di = self._dev_cb.findData(dev); self._dev_cb.setCurrentIndex(di if di >= 0 else 0)
+        self._dev_cb.currentIndexChanged.connect(self._persist)
+        self._dev_cb.currentIndexChanged.connect(self._update_runtime_label)
+        drow.addWidget(self._dev_cb, 1); lay.addLayout(drow)
+
+        self._py_edit = self._path_row(lay, t("Python のパス"), sv.get("python", ""),
+                                       self._browse_python)
+        self._repo_edit = self._path_row(lay, t("モデルのフォルダ"), sv.get("repo", ""),
+                                         self._browse_repo)
+
+        prow = QHBoxLayout(); prow.setSpacing(8)
+        prow.addWidget(QLabel(t("ポート")))
+        self._port_spin = QSpinBox(); self._port_spin.setRange(1024, 65535)
+        self._port_spin.setValue(int(sv.get("port", 7860)))
+        self._port_spin.valueChanged.connect(self._persist)
+        prow.addWidget(self._port_spin)
+        prow.addSpacing(14); prow.addWidget(QLabel(t("色の濃さ")))
+        self._sat_spin = QDoubleSpinBox(); self._sat_spin.setRange(0.2, 3.0)
+        self._sat_spin.setSingleStep(0.1); self._sat_spin.setValue(float(sv.get("saturation", 1.0)))
+        self._sat_spin.setToolTip(t("1.0=標準。大きいほど鮮やかに、小さいほど淡くなります。"))
+        self._sat_spin.valueChanged.connect(self._persist)
+        prow.addWidget(self._sat_spin); prow.addStretch()
+        lay.addLayout(prow)
+
+        sat_help = QLabel(t("「色の濃さ」は着色の鮮やかさ。1.0 が標準で、数値を大きくするほど色が"
+                            "濃く鮮やかに、小さくするほど淡く（モノクロ寄りに）なります。"
+                            "変更したらサーバを再起動し、「着色データを削除」で塗り直してください。"))
+        sat_help.setWordWrap(True)
+        sat_help.setStyleSheet("color:#6f6690;font-size:10px;background:transparent;")
+        lay.addWidget(sat_help)
+
+        srow = QHBoxLayout(); srow.setSpacing(8)
+        self._srv_btn = QPushButton(t("サーバ起動")); self._srv_btn.clicked.connect(self._toggle_server)
+        srow.addWidget(self._srv_btn)
+        self._srv_lbl = QLabel(""); self._srv_lbl.setWordWrap(True)
+        self._srv_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        srow.addWidget(self._srv_lbl, 1); lay.addLayout(srow)
+
+        shint = QLabel(t("※ 自動起動ONのとき、下の「エンドポイントURL」はサーバ起動時に自動設定されます。"))
+        shint.setWordWrap(True); shint.setStyleSheet("color:#6f6690;font-size:10px;background:transparent;")
+        lay.addWidget(shint)
+
+        mgr = ai_server.get_manager()
+        mgr.status_changed.connect(self._on_srv_status)
+        self._on_srv_status(mgr.status, mgr.message)
+
+    def _open_runtime_setup(self, *_):
+        dlg = AiRuntimeSetupDialog(self.settings, on_done=self._on_runtime_done, parent=self)
+        dlg.exec()
+        self._update_runtime_label()
+
+    def _on_runtime_done(self):
+        """自動構築が完了したら、サーバ設定欄に反映する。"""
+        import ai_color
+        sv = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})["server"]
+        self._py_edit.setText(sv.get("python", ""))
+        self._repo_edit.setText(sv.get("repo", ""))
+        self._mng_cb.setChecked(bool(sv.get("manage")))
+        di = self._dev_cb.findData(sv.get("device", "cpu"))
+        if di >= 0:
+            self._dev_cb.setCurrentIndex(di)
+        self._update_runtime_label()
+
+    def _update_runtime_label(self):
+        import ai_runtime
+        dev = self._dev_cb.currentData() if hasattr(self, "_dev_cb") else ""
+        if ai_runtime.is_ready(dev):
+            self._setup_lbl.setStyleSheet("color:#7fd6a0;font-size:11px;background:transparent;")
+            self._setup_lbl.setText(t("準備済み ✓"))
+        else:
+            stt = ai_runtime.status(dev)
+            n = sum(1 for v in stt.values() if v)
+            self._setup_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+            self._setup_lbl.setText(t("未準備（{n}/4 完了）").format(n=n) if n else
+                                    t("未準備"))
+
+    def _path_row(self, lay, label, value, browse_cb):
+        r = QHBoxLayout(); r.setSpacing(8)
+        lb = QLabel(label); lb.setMinimumWidth(120); r.addWidget(lb)
+        e = QLineEdit(); e.setText(value or ""); e.textChanged.connect(self._persist)
+        r.addWidget(e, 1)
+        b = QPushButton(t("参照")); b.clicked.connect(browse_cb); r.addWidget(b)
+        lay.addLayout(r)
+        return e
+
+    def _browse_python(self, *_):
+        p, _f = QFileDialog.getOpenFileName(self, t("Python を選択"), "",
+                                            "Python (python*.exe);;すべて (*)")
+        if p:
+            self._py_edit.setText(p)
+
+    def _browse_repo(self, *_):
+        p = QFileDialog.getExistingDirectory(self, t("モデルのフォルダを選択"))
+        if p:
+            self._repo_edit.setText(p)
+
+    def _collect_server(self) -> dict:
+        import ai_color
+        prev = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})["server"]
+        return {"manage": self._mng_cb.isChecked(),
+                "python": self._py_edit.text().strip(),
+                "repo": self._repo_edit.text().strip(),
+                "device": self._dev_cb.currentData() or "cpu",
+                "port": int(self._port_spin.value()),
+                "saturation": float(self._sat_spin.value()),
+                "runtime_dir": prev.get("runtime_dir", "")}
+
+    def _toggle_server(self, *_):
+        import ai_server
+        mgr = ai_server.get_manager()
+        if mgr.is_active():
+            mgr.stop()
+            return
+        self._persist()
+        sv = self._collect_server()
+        mgr.start(python=sv["python"], repo=sv["repo"], device=sv["device"],
+                  port=sv["port"], saturation=sv["saturation"])
+
+    def _on_srv_status(self, status: str, msg: str):
+        import ai_server
+        active = status in (ai_server.ColorServerManager.STARTING,
+                            ai_server.ColorServerManager.RUNNING)
+        self._srv_btn.setText(t("サーバ停止") if active else t("サーバ起動"))
+        text = {"stopped": t("停止中"), "starting": t("起動中…（初回はモデル読込で時間がかかります）"),
+                "running": t("実行中 ✓"), "error": t("エラー: ") + msg[:90]}.get(status, status)
+        color = ("#7fd6a0" if status == "running" else
+                 "#e08a7f" if status == "error" else "#8a7fa6")
+        self._srv_lbl.setStyleSheet(f"color:{color};font-size:11px;background:transparent;")
+        self._srv_lbl.setText(text)
+
+    # ── プラグイン未導入時の案内 ────────────────────────────
+
+    def _build_no_plugin(self, lay):
+        import plugins
+        box = QLabel(t("着色プラグインが見つかりません。\n"
+                       "下のフォルダにプラグイン（フォルダ＋plugin.py）を入れると有効になります。"))
+        box.setWordWrap(True)
+        box.setStyleSheet("color:#ddd;font-size:12px;background:#2b2539;border:1px solid #463d63;"
+                          "border-radius:10px;padding:10px 12px;")
+        lay.addWidget(box)
+        pdir = plugins.ensure_user_plugin_dir()
+        path = QLabel(str(pdir)); path.setWordWrap(True)
+        path.setStyleSheet("color:#bfa6ff;font-size:11px;background:transparent;")
+        lay.addWidget(path)
+        r = QHBoxLayout()
+        openb = QPushButton(t("プラグインフォルダを開く")); openb.clicked.connect(lambda: self._open_dir(pdir))
+        r.addWidget(openb); r.addStretch(); lay.addLayout(r)
+
+    @staticmethod
+    def _open_dir(path):
+        import os, sys, subprocess
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(str(path))   # noqa
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception:
+            pass
+
+    # ── プラグイン設定UI ────────────────────────────────────
+
+    def _build_plugin_ui(self, lay):
+        prow = QHBoxLayout(); prow.setSpacing(8)
+        prow.addWidget(QLabel(t("プラグイン")))
+        self._plugin_cb = QComboBox()
+        for prov in self._providers:
+            self._plugin_cb.addItem(getattr(prov, "name", prov.id), prov.id)
+        idx = self._plugin_cb.findData(self._cfg["plugin"])
+        self._plugin_cb.setCurrentIndex(idx if idx >= 0 else 0)
+        self._plugin_cb.currentIndexChanged.connect(self._on_plugin_changed)
+        prow.addWidget(self._plugin_cb, 1); lay.addLayout(prow)
+
+        self._desc = QLabel(""); self._desc.setWordWrap(True)
+        self._desc.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        lay.addWidget(self._desc)
+
+        # プラグイン固有の設定項目をここに動的に並べる
+        self._fields_box = QVBoxLayout(); self._fields_box.setSpacing(7)
+        lay.addLayout(self._fields_box)
+
+        trow = QHBoxLayout()
+        self._test_btn = QPushButton(t("接続テスト")); self._test_btn.clicked.connect(self._test)
+        trow.addWidget(self._test_btn)
+        self._test_lbl = QLabel(""); self._test_lbl.setWordWrap(True)
+        self._test_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        trow.addWidget(self._test_lbl, 1); lay.addLayout(trow)
+
+        self._rebuild_fields()
+
+    def _current_provider(self):
+        import plugins
+        pid = self._plugin_cb.currentData() if hasattr(self, "_plugin_cb") else self._cfg["plugin"]
+        return plugins.get_colorizer(pid)
+
+    def _rebuild_fields(self):
+        import plugins
+        # 既存のフィールドwidgetを片付ける
+        while self._fields_box.count():
+            item = self._fields_box.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+            elif item.layout() is not None:
+                self._clear_layout(item.layout())
+        self._field_widgets.clear()
+
+        prov = self._current_provider()
+        if prov is None:
+            return
+        self._desc.setText(t(getattr(prov, "description", "") or ""))
+        opts = self._cfg["opts"] if isinstance(self._cfg.get("opts"), dict) else {}
+        for f in plugins.provider_config_fields(prov):
+            key = f.get("key")
+            if not key:
+                continue
+            cur = opts.get(key, f.get("default"))
+            row = QHBoxLayout(); row.setSpacing(8)
+            label = QLabel(t(f.get("label", key))); label.setMinimumWidth(120)
+            row.addWidget(label)
+            w = self._make_field(f, cur)
+            self._field_widgets[key] = w
+            row.addWidget(w, 1)
+            self._fields_box.addLayout(row)
+            help_txt = f.get("help")
+            if help_txt:
+                h = QLabel(t(help_txt)); h.setWordWrap(True)
+                h.setStyleSheet("color:#6f6690;font-size:10px;background:transparent;margin-left:6px;")
+                self._fields_box.addWidget(h)
+
+    def _make_field(self, f: dict, cur):
+        ftype = f.get("type", "text")
+        if ftype == "bool":
+            w = QCheckBox(); w.setChecked(bool(cur)); w.stateChanged.connect(self._persist)
+            return w
+        if ftype == "int":
+            w = QSpinBox(); w.setRange(0, 1000000)
+            try: w.setValue(int(cur))
+            except (TypeError, ValueError): w.setValue(0)
+            w.valueChanged.connect(self._persist); return w
+        if ftype == "choice":
+            w = QComboBox()
+            for c in f.get("choices", []):
+                w.addItem(str(c), c)
+            i = w.findData(cur)
+            w.setCurrentIndex(i if i >= 0 else 0)
+            w.currentIndexChanged.connect(self._persist); return w
+        # text / password
+        w = QLineEdit(); w.setText("" if cur is None else str(cur))
+        if ftype == "password":
+            w.setEchoMode(QLineEdit.EchoMode.Password)
+        w.textChanged.connect(self._persist)
+        return w
+
+    @staticmethod
+    def _clear_layout(layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _collect_opts(self) -> dict:
+        out = {}
+        for key, w in self._field_widgets.items():
+            if isinstance(w, QCheckBox):
+                out[key] = w.isChecked()
+            elif isinstance(w, QSpinBox):
+                out[key] = w.value()
+            elif isinstance(w, QComboBox):
+                out[key] = w.currentData()
+            elif isinstance(w, QLineEdit):
+                out[key] = w.text()
+        return out
+
+    # ── 保存 ────────────────────────────────────────────────
+
+    def _persist(self, *_):
+        """プラグイン選択・接続設定・サーバ設定を保存する（有効化フラグ on は触らない）。"""
+        import ai_color
+        cur = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})
+        if hasattr(self, "_plugin_cb"):
+            cur["plugin"] = self._plugin_cb.currentData() or ""
+            cur["opts"] = self._collect_opts()
+        if hasattr(self, "_mng_cb"):
+            server = self._collect_server()
+            cur["server"] = server
+            # 自動起動ONなら接続先URLはポートから自動導出（手動入力に依存しない）
+            if server["manage"]:
+                cur["opts"] = {**cur.get("opts", {}),
+                               "endpoint": f"http://127.0.0.1:{server['port']}/colorize"}
+        self.settings.ai_color = dict(cur)
+        self.settings.save()
+
+    def _on_plugin_changed(self, *_):
+        self._rebuild_fields()
+        self._test_lbl.setText("")
+        self._persist()
+
+    def _apply_enabled_state(self):
+        en = bool(self._providers)
+        if hasattr(self, "_plugin_cb"):
+            for w in (self._plugin_cb, self._test_btn):
+                w.setEnabled(en)
+            for w in self._field_widgets.values():
+                w.setEnabled(en)
+
+    def _test(self, *_):
+        prov = self._current_provider()
+        if prov is None:
+            return
+        opts = dict(self._collect_opts())
+        # テストはサッと終わらせたいので待ち時間を短めに上書き
+        if "timeout" in opts:
+            try: opts["timeout"] = min(int(opts["timeout"]), 20)
+            except (TypeError, ValueError): opts["timeout"] = 20
+        self._test_btn.setEnabled(False)
+        self._test_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        self._test_lbl.setText(t("テスト中…"))
+        worker = _ColorTestWorker(prov, opts)
+        worker.signals.done.connect(self._test_done)
+        self._pool.start(worker)
+
+    def _test_done(self, ok: bool, msg: str):
+        self._test_btn.setEnabled(bool(self._providers))
+        color = "#7fd6a0" if ok else "#e08a7f"
+        self._test_lbl.setStyleSheet(f"color:{color};font-size:11px;background:transparent;")
+        self._test_lbl.setText(("✓ " if ok else "✗ ") + msg)
+
+    def closeEvent(self, e):
+        # 入力途中の値も閉じる時点で確定する
+        self._persist()
+        super().closeEvent(e)
+
+
+class AiColorDialog(_AiCacheMixin, QDialog):
+    """本を開いた状態のメニューから開くAI着色（プラグイン）。
+
+    ここには「有効にする」「この本を全ページ着色」「着色データを削除」だけを置く。
+    接続先などの設定は本棚の⚙設定 →「AI着色」（AiColorConfigDialog）で行う。
+    """
+
+    def __init__(self, settings, on_change=None, reader=None, parent=None):
+        super().__init__(parent)
+        import ai_color
+        self.settings = settings
+        self._on_change = on_change
+        self._reader = reader
+        self._batch_running = False
+        self._cfg = ai_color.merge(getattr(settings, "ai_color", {}) or {})
+        self.setWindowTitle(t("🤖 AI着色"))
+        self.setMinimumWidth(420)
+        self.setStyleSheet(_AI_QSS)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(9)
+
+        self._on_cb = QCheckBox(t("AI着色を有効にする（読んでいるページを自動で着色）"))
+        self._on_cb.setChecked(bool(self._cfg["on"]))
+        self._on_cb.stateChanged.connect(self._toggle_on)
+        lay.addWidget(self._on_cb)
+
+        note = QLabel(t("接続先などの設定は、本棚の⚙設定 →「🤖 AI着色」から行います。"))
+        note.setWordWrap(True); note.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        lay.addWidget(note)
+
+        # この本を全ページ着色（バックグラウンドでキャッシュに溜める）
+        if self._reader is not None and getattr(self._reader, "source", None) is not None:
+            brow = QHBoxLayout(); brow.setSpacing(8)
+            self._batch_btn = QPushButton(t("この本を全ページ着色"))
+            self._batch_btn.clicked.connect(self._toggle_batch)
+            brow.addWidget(self._batch_btn)
+            self._batch_lbl = QLabel(""); self._batch_lbl.setWordWrap(True)
+            self._batch_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+            brow.addWidget(self._batch_lbl, 1); lay.addLayout(brow)
+
+        self._build_cache_row(lay)
+
+        hint = QLabel(t("※ AI着色は学習からの推測です。実際の色（作者の意図した色）の再現ではなく、"
+                        "ページ間で色がぶれることがあります。"))
+        hint.setWordWrap(True); hint.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        lay.addWidget(hint)
+
+        row = QHBoxLayout(); row.addStretch()
+        close = QPushButton(t("閉じる")); close.setObjectName("close"); close.clicked.connect(self.accept)
+        row.addWidget(close); lay.addLayout(row)
+
+    def _persist(self, *_):
+        """有効化フラグ on だけを保存（接続設定 plugin/opts はそのまま保つ）。"""
+        import ai_color
+        cur = ai_color.merge(getattr(self.settings, "ai_color", {}) or {})
+        cur["on"] = self._on_cb.isChecked()
+        self.settings.ai_color = dict(cur)
+        self.settings.save()
+
+    def _apply(self):
+        self._persist()
+        if self._on_change:
+            self._on_change()
+
+    def _toggle_on(self, *_):
+        self._apply()
+
+    # ── 全ページ着色 ────────────────────────────────────────
+
+    def _toggle_batch(self, *_):
+        r = self._reader
+        if r is None or getattr(r, "source", None) is None:
+            return
+        if self._batch_running:
+            r.cancel_batch()
+            self._batch_btn.setText(t("中止しています…"))
+            self._batch_btn.setEnabled(False)
+            return
+        # 全ページ着色は表示にも反映させたいので、先に有効化を確定する
+        self._on_cb.setChecked(True)
+        self._apply()
+        if not r.start_batch_colorize(self._on_batch_progress, self._on_batch_finished):
+            self._batch_lbl.setStyleSheet("color:#e08a7f;font-size:11px;background:transparent;")
+            self._batch_lbl.setText(t("本棚の⚙設定でプラグイン/接続先を設定してください"))
+            return
+        self._batch_running = True
+        self._batch_btn.setText(t("中止"))
+        self._batch_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        self._batch_lbl.setText(t("着色中… 0%"))
+
+    def _on_batch_progress(self, done: int, total: int):
+        pct = int(done * 100 / total) if total else 0
+        self._batch_lbl.setText(t("着色中… {d}/{t} ({p}%)").format(d=done, t=total, p=pct))
+
+    def _on_batch_finished(self, ok: int, total: int, cancelled: bool):
+        self._batch_running = False
+        self._batch_btn.setEnabled(True)
+        self._batch_btn.setText(t("この本を全ページ着色"))
+        if cancelled:
+            self._batch_lbl.setText(t("中止しました（{ok}/{total} 着色済み）").format(ok=ok, total=total))
+        else:
+            self._batch_lbl.setStyleSheet("color:#7fd6a0;font-size:11px;background:transparent;")
+            self._batch_lbl.setText(t("完了：{ok}/{total} ページ").format(ok=ok, total=total))
+        self._update_cache_label()
+
+    def closeEvent(self, e):
+        self._apply()
+        super().closeEvent(e)
 
 
 class _CheckTree(QTreeWidget):
