@@ -12,7 +12,11 @@ a = Analysis(
            ('plugins', 'plugins'),    # 同梱プラグイン（AI着色のリファレンス等）
            ('tools', 'tools')],       # Piewerが起動するローカル着色サーバ
     hiddenimports=['fitz', 'auto_tag', 'folder_view',
-                   'plugins', 'ai_color', 'ai_server', 'ai_runtime'],   # PyMuPDF / 関数内importの自作モジュール
+                   'plugins', 'ai_color', 'ai_server', 'ai_runtime',   # PyMuPDF / 関数内importの自作モジュール
+                   # 同梱プラグイン(plugins/connector)が動的ロード時にimportする標準ライブラリ。
+                   # PyInstallerの静的解析はプラグインを辿らないため明示しないと同梱されず、
+                   # frozen exeでプラグインが読み込めず「着色プラグインが見つかりません」になる。
+                   'uuid', 'urllib.request', 'urllib.error'],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

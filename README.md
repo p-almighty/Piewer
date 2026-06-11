@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.72-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.81-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -45,7 +45,8 @@
 - ↕️ **幅 / 高さフィット** & ズーム・パン
 - 🖱️ **タッチ & ドラッグ操作** — スワイプ・慣性スクロール対応
 - 📂 **多彩な形式** — ZIP / CBZ / **EPUB / KEPUB** / RAR / CBR / **PDF** / 画像フォルダ（動くGIF/WebP/APNGも再生）
-- 🎨 **画質補正 & 擬似カラー化** — 自動レベル補正・ガンマ・シャープ＋“色刷り風”の疑似カラー（セピア/青/暖色/寒色/4色刷り風）
+- 🤖 **AI 白黒→カラー自動着色** — ワンクリックで必要な一式を自動セットアップ。着色はすべてローカル完結で画像はPCの外に出ません（GPU/CPU 選択可・保存先変更可）
+- 🎨 **画質補正 & 擬似カラー化** — 自動レベル補正・ガンマ・シャープ＋“色刷り風”の疑似カラー（セピア/青/暖色/寒色/4色刷り風/色刷り(紺×橙)）
 - ⌨️ **ショートカットのカスタマイズ**
 - 💾 **続きから再開** & **バックアップ / 復元**
 - 🌙 **ダーク / ライトテーマ** & アクセント色の変更
@@ -53,6 +54,13 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.81
+- 🐛 **AI着色の不具合を修正** — 配布版（exe）で「AI着色」を開くと「着色プラグインが見つかりません」と表示され使えなかった問題を修正（着色プラグインに必要な標準ライブラリが exe に含まれていませんでした）。v1.80 でお試しいただけなかった方はこちらへ更新してください
+
+### v1.80
+- 🤖 **AI 白黒→カラー自動着色** — ⚙設定 →「🤖 AI着色」→「AI着色を自動で準備する」を押すだけで、必要な一式（実行用 Python・AIライブラリ・着色プログラム・モデル）を自動でダウンロード＆セットアップ。**着色はすべてローカルで完結**し、画像は PC の外に出ません（GPU / CPU を選択可・保存先は別ドライブにも変更可）
+- 🎨 **擬似カラー化に「色刷り(紺×橙)」プリセットを追加**
 
 ### v1.72
 - 📘 **KEPUB 対応** — Kobo の `.kepub` / `.kepub.epub`（画像ベース）を開けるように
