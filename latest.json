@@ -1,6 +1,6 @@
 {
-  "version": "1.72",
+  "version": "1.80",
   "url": "https://github.com/p-almighty/Piewer/releases/latest",
-  "notes_ja": "Kobo の KEPUB（.kepub / .kepub.epub）に対応しました。さらに画質補正（自動レベル補正・ガンマ・シャープ）と、擬似カラー化（疑似色刷り：セピア/青/暖色/寒色/4色刷り風）を追加。HUDの「🎨 画質」または⚙設定から使えます（色がついた風にする軽量処理で、AI着色とは別物です）。KindleのKFXは非対応で、Calibreで変換してご利用ください。",
-  "notes_en": "Added support for Kobo KEPUB (.kepub / .kepub.epub). Also added image correction (auto level, gamma, sharpen) and pseudo-colorization (sepia / blue / warm / cool / 4-color print) available from the '🎨 Image' button in the HUD or in Settings (a lightweight 'colored impression' effect, not AI colorization). Kindle KFX is not supported; please convert with Calibre."
+  "notes_ja": "AI白黒→カラー自動着色をワンクリックで使えるようにしました。⚙設定の「🤖 AI着色」→「AI着色を自動で準備する」を押すと、必要な一式（実行用Python・AIライブラリ・着色プログラム・モデル）を自動でダウンロードして用意します（保存先は別ドライブにも変更可・GPU/CPU選択可）。着色はすべてローカルで完結し、画像はPCの外に出ません。さらに擬似カラー化に「色刷り(紺×橙)」プリセットを追加しました。",
+  "notes_en": "One-click AI black-and-white to color. In Settings → '🤖 AI Colorization' → 'Set up AI colorization automatically', Piewer downloads everything needed (a runtime Python, AI libraries, the colorization program, and the model) for you (the install location can be moved to another drive; choose GPU or CPU). Colorization runs entirely on your PC and images never leave it. Also added a new pseudo-colorization preset 'Color print (navy/orange)'."
 }
