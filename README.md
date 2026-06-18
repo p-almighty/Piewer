@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.81-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.90-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -34,9 +34,29 @@
 
 ---
 
+## 📸 スクリーンショット
+
+<div align="center">
+
+**本棚を選ぶ**
+
+<img src="screenshots/shelves.jpg" width="820" alt="本棚選択画面">
+
+**漫画を読む（見開き・縦読み・PDF 対応）**
+
+<img src="screenshots/reader.jpg" width="820" alt="リーダー画面">
+
+**設定 ／ タグで絞り込み ／ 画質補正・擬似カラー化**
+
+<img src="screenshots/settings.jpg" height="360" alt="設定"> &nbsp; <img src="screenshots/filter-tags.jpg" height="360" alt="タグで絞り込み"> &nbsp; <img src="screenshots/image-fx.jpg" height="360" alt="画質補正・擬似カラー化">
+
+</div>
+
+---
+
 ## ✨ 主な機能
 
-- 📚 **複数の本棚** — ジャンル別などで本棚を分けて管理。並び替えも自由
+- 📚 **複数の本棚** — ジャンル別などで本棚を分けて管理。**並び順は本棚ごとに記憶**
 - ⭐ **お気に入り / 🕒 最近読んだ本** — 専用の本棚で素早くアクセス
 - 🏷️ **タグ付け & 絞り込み** — タグ・お気に入り・全棚横断検索で目的の本へ
 - 🔖 **しおり** — 好きなページに目印、前後ジャンプも
@@ -46,6 +66,7 @@
 - 🖱️ **タッチ & ドラッグ操作** — スワイプ・慣性スクロール対応
 - 📂 **多彩な形式** — ZIP / CBZ / **EPUB / KEPUB** / RAR / CBR / **PDF** / 画像フォルダ（動くGIF/WebP/APNGも再生）
 - 🤖 **AI 白黒→カラー自動着色** — ワンクリックで必要な一式を自動セットアップ。着色はすべてローカル完結で画像はPCの外に出ません（GPU/CPU 選択可・保存先変更可）
+- 🔍 **AI 超解像（高解像度化）** — 低解像度のページをローカルAI（Real-CUGAN）でくっきり拡大。表示より小さいページにだけ自動で適用（ローカル完結・GPU/CPU 選択可）
 - 🎨 **画質補正 & 擬似カラー化** — 自動レベル補正・ガンマ・シャープ＋“色刷り風”の疑似カラー（セピア/青/暖色/寒色/4色刷り風/色刷り(紺×橙)）
 - ⌨️ **ショートカットのカスタマイズ**
 - 💾 **続きから再開** & **バックアップ / 復元**
@@ -54,6 +75,12 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.90
+- 🔍 **AI 超解像（高解像度化）を追加** — 低解像度のページをローカルAIでくっきり拡大。「🎨 画質」→「🔍 AI超解像の設定を開く…」→「▶ 自動でセットアップ」のワンボタンで準備でき、表示より小さいページにだけ自動で適用されます
+- 🗂 **RAR 読み込みの不具合を修正** — 一部の RAR/CBR（圧縮・RAR5）が開けずサムネイルも出なかった問題を修正（展開ツールを同梱）
+- 📚 **本棚ごとに並び順を記憶**（登録順／ファイル名／最近読んだ順／進捗順／シリーズ順）
+- 🏷️ **タグ編集を改善** — 既存タグ名を入力するとそのタグを選択（重複作成を防止）＋最近つけたタグ5件を候補表示
 
 ### v1.81
 - 🐛 **AI着色の不具合を修正** — 配布版（exe）で「AI着色」を開くと「着色プラグインが見つかりません」と表示され使えなかった問題を修正（着色プラグインに必要な標準ライブラリが exe に含まれていませんでした）。v1.80 でお試しいただけなかった方はこちらへ更新してください
