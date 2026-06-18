@@ -186,6 +186,19 @@ STEPS = [
     ("weights", "モデルデータ（重み）"),
 ]
 
+# ── Real-CUGAN（超解像）取得元（更新時はここだけ直す）────────────
+# 超解像は着色と同じ python/torch を流用する（深い依存の再導入は不要）。追加で要るのは
+# 推論コード（upcunet_v3.py・torch/numpy/cv2のみで自己完結＝1ファイル）と、
+# 拡大率/ノイズ除去ごとの重み(.pth)だけ。更新時はこの2つのURLを直す。
+CUGAN_REPO_URL = ("https://raw.githubusercontent.com/bilibili/ailab/main/"
+                  "Real-CUGAN/upcunet_v3.py")
+# 重み: <base>/<filename> でDL（HuggingFaceのミラー・weights_v3）。
+CUGAN_WEIGHTS_BASE = ("https://huggingface.co/spaces/DianXian/Real-CUGAN/"
+                      "resolve/main/weights_v3/")
+# denoise 値 → Real-CUGAN の重みファイル名サフィックス（local_upscale_server と一致させる）
+_CUGAN_DENOISE_SUFFIX = {-1: "conservative", 0: "no-denoise",
+                         1: "denoise1x", 2: "denoise2x", 3: "denoise3x"}
+
 
 # ── パス / 状態の問い合わせ ──────────────────────────────────
 
@@ -255,6 +268,61 @@ def status(device: str = "") -> dict:
         "deps": deps_ready(device),
         "repo": repo_ready(),
         "weights": weights_ready(),
+    }
+
+
+# ── Real-CUGAN（超解像）資産のパス / 準備状況 ──────────────────
+
+def cugan_dir() -> Path:
+    return RUNTIME_DIR / "cugan"
+
+
+def cugan_repo_dir() -> Path:
+    return cugan_dir() / "repo"
+
+
+def cugan_weights_dir() -> Path:
+    return cugan_dir() / "weights"
+
+
+def cugan_weight_filename(scale: int, denoise: int) -> str:
+    """(scale, denoise) に対応する Real-CUGAN の標準重みファイル名。
+
+    3x/4x には denoise1x/denoise2x が存在しない（公式weights_v3）ため、その指定は
+    用意のある denoise3x へ寄せる。2x は5種すべてある。
+    """
+    suffix = _CUGAN_DENOISE_SUFFIX.get(int(denoise), "denoise1x")
+    if int(scale) >= 3 and suffix in ("denoise1x", "denoise2x"):
+        suffix = "denoise3x"
+    return f"up{int(scale)}x-latest-{suffix}.pth"
+
+
+def cugan_repo_ready() -> bool:
+    return (cugan_repo_dir() / "upcunet_v3.py").exists()
+
+
+def cugan_weight_path(scale: int, denoise: int) -> Path:
+    return cugan_weights_dir() / cugan_weight_filename(scale, denoise)
+
+
+def cugan_weights_ready(scale: int = 2, denoise: int = 1) -> bool:
+    p = cugan_weight_path(scale, denoise)
+    return p.exists() and p.stat().st_size > 0
+
+
+def cugan_ready(scale: int = 2, denoise: int = 1) -> bool:
+    """超解像サーバ(cugan)を起動できる状態か（python＋torch＋コード＋重み）。"""
+    return (python_ready() and deps_ready() and cugan_repo_ready()
+            and cugan_weights_ready(scale, denoise))
+
+
+def cugan_status(scale: int = 2, denoise: int = 1) -> dict:
+    """超解像構築の各要素の状況（UI表示用）。python/deps は着色と共用。"""
+    return {
+        "python": python_ready(),
+        "deps": deps_ready(),
+        "repo": cugan_repo_ready(),
+        "weights": cugan_weights_ready(scale, denoise),
     }
 
 
@@ -586,3 +654,42 @@ def _stream_to_file(resp, dest: Path, progress_cb, is_cancelled):
             done += len(chunk)
             if progress_cb:
                 progress_cb(done, total)
+
+
+# ── Real-CUGAN（超解像）資産のダウンロード ──────────────────────
+
+def _http_download(url: str, dest: Path, progress_cb=None, is_cancelled=None):
+    """進捗付きHTTPダウンロード（urllib・キャンセル対応）。重い依存なし。"""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        _stream_to_file(resp, dest, progress_cb, is_cancelled)
+
+
+def download_cugan_repo(progress_cb=None, is_cancelled=None) -> bool:
+    """Real-CUGAN の推論コード(upcunet_v3.py)を cugan/repo に配置（既存ならスキップ）。
+
+    upcunet_v3.py は torch/numpy/cv2 だけで動く単一ファイルなので、リポジトリ全体では
+    なくこの1ファイルだけを取得する（cv2 は着色ランタイムの opencv-python を流用）。
+    """
+    if cugan_repo_ready():
+        return True
+    cugan_repo_dir().mkdir(parents=True, exist_ok=True)
+    dest = cugan_repo_dir() / "upcunet_v3.py"
+    _http_download(CUGAN_REPO_URL, dest, progress_cb, is_cancelled)
+    if not cugan_repo_ready():
+        raise RuntimeError("Real-CUGAN の推論コード(upcunet_v3.py)の取得に失敗しました")
+    return True
+
+
+def download_cugan_weight(scale: int = 2, denoise: int = 1,
+                          progress_cb=None, is_cancelled=None) -> bool:
+    """指定 (scale, denoise) の重みを取得して cugan/weights に配置（既存ならスキップ）。"""
+    if cugan_weights_ready(scale, denoise):
+        return True
+    cugan_weights_dir().mkdir(parents=True, exist_ok=True)
+    fname = cugan_weight_filename(scale, denoise)
+    dest = cugan_weight_path(scale, denoise)
+    _http_download(CUGAN_WEIGHTS_BASE + fname, dest, progress_cb, is_cancelled)
+    if not (dest.exists() and dest.stat().st_size > 0):
+        raise RuntimeError(f"重み {fname} のダウンロードに失敗しました")
+    return True

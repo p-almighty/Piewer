@@ -273,11 +273,94 @@ _EN = {
     "タグを編集": "Edit Tags",
     "タグをクリックで追加 / 解除。新しいタグは下の欄から追加できます。":
         "Click a tag to add/remove. Add new tags in the field below.",
+    "🕘 最近つけたタグ": "🕘 Recent tags",
     "（まだタグがありません。下から追加してください）":
         "(No tags yet. Add one below.)",
     "新しいタグを入力して Enter": "Type a new tag and press Enter",
     "＋ 追加": "＋ Add",
     "保存": "Save",
+    "🔍 AI超解像（高解像度化）": "🔍 AI Upscale (super-resolution)",
+    "AI超解像を有効にする（表示より小さいページを自動で高精細化）":
+        "Enable AI upscale (auto-sharpen pages smaller than the display)",
+    "超解像プラグインが見つかりません。plugins/local_upscale を確認してください。":
+        "No upscale plugin found. Check plugins/local_upscale.",
+    "拡大率": "Scale",
+    "接続テスト": "Test connection",
+    "テスト中…": "Testing…",
+    "結果が空でした。": "The result was empty.",
+    "接続成功（ただし拡大されていません。サーバの拡大率を確認）。":
+        "Connected, but no upscaling occurred (check the server scale).",
+    "接続成功。超解像サーバから拡大画像を受け取れました。":
+        "Connected. Received an upscaled image from the server.",
+    "接続先はローカル超解像サーバのURLです（例: tools/local_upscale_server.py を起動）。拡大率を変えたら「高解像度データを削除」で作り直してください。":
+        "The endpoint is your local upscale server URL (e.g. run tools/local_upscale_server.py). After changing the scale, use \"Delete upscaled data\" to rebuild.",
+    "高解像度データを削除": "Delete upscaled data",
+    "高解像度データ: {mb:.1f} MB": "Upscaled data: {mb:.1f} MB",
+    "高解像度データ: 0.0 MB（削除するものはありません）": "Upscaled data: 0.0 MB (nothing to delete)",
+    "高解像度データの削除": "Delete upscaled data",
+    "保存済みの高解像度データを全て削除しますか？\n（次に開いたページから作り直されます）":
+        "Delete all saved upscaled data?\n(It will be rebuilt from the next page you open.)",
+    "🔍 高解像度化中…": "🔍 Upscaling…",
+    "🔍 高解像度化に失敗しました（設定/接続を確認）":
+        "🔍 Upscale failed (check settings/connection)",
+    "🔍 超解像サーバ起動中…（初回はモデル読込で時間がかかります）":
+        "🔍 Starting upscale server… (first run loads the model, please wait)",
+    "🔍 サーバエラー: ": "🔍 Server error: ",
+    "超解像サーバ（Piewerが自動で起動できます）":
+        "Upscale server (Piewer can start it for you)",
+    "Piewerでサーバを自動起動する": "Let Piewer start the server automatically",
+    "実行": "Run on",
+    "CPU": "CPU",
+    "GPU(CUDA)": "GPU (CUDA)",
+    "起動": "Start",
+    "停止": "Stop",
+    "停止中": "Stopped",
+    "起動中…": "Starting…",
+    "実行中": "Running",
+    "エラー: ": "Error: ",
+    "Real-CUGANを準備（コード＋重み）": "Set up Real-CUGAN (code + weights)",
+    "Real-CUGAN 準備済み（再取得）": "Real-CUGAN ready (re-download)",
+    "Real-CUGAN の準備が完了しました。": "Real-CUGAN is ready.",
+    "ダウンロード中…（torchは着色の準備分を使います）":
+        "Downloading… (reuses torch from the colorize setup)",
+    "低解像度のページをAIで高精細に拡大します。表示より小さいページにだけ自動で効きます。":
+        "Upscales low-resolution pages with AI. Applies only to pages smaller than the display.",
+    "① 仕上がりと実行先を選ぶ": "① Choose quality and where to run",
+    "拡大": "Scale",
+    "2倍（速い）": "2x (faster)",
+    "4倍（精細）": "4x (sharper)",
+    "② ボタンひとつで準備する": "② Set up with one button",
+    "▶ 自動でセットアップして有効にする": "▶ Auto setup and enable",
+    "有効にする（小さいページを自動で高解像度化）":
+        "Enable (auto-upscale small pages)",
+    "詳細設定 ▾": "Advanced ▾",
+    "詳細設定 ▴": "Advanced ▴",
+    "Piewerでサーバを自動起動する（推奨）": "Let Piewer start the server (recommended)",
+    "準備済み。サーバを起動して有効にします…": "Ready. Starting the server and enabling…",
+    "Real-CUGAN を準備しています…（初回はダウンロードに時間がかかります）":
+        "Setting up Real-CUGAN… (first time downloads, please wait)",
+    "準備に失敗しました: ": "Setup failed: ",
+    "（詳細設定で接続先や実行先を確認できます）":
+        " (check the endpoint and device under Advanced)",
+    "拡大/実行先を変えました。②をもう一度押すと反映されます。":
+        "Scale/device changed. Press ② again to apply.",
+    "無効です。②を押すと準備して有効にします。":
+        "Disabled. Press ② to set up and enable.",
+    "✓ 有効（手動の接続先を使用）。": "✓ Enabled (using manual endpoint).",
+    "✓ 有効・実行中。小さいページが自動で高解像度化されます。":
+        "✓ Enabled and running. Small pages are upscaled automatically.",
+    "サーバを起動中…（初回はモデル読込で時間がかかります）":
+        "Starting the server… (first run loads the model)",
+    "サーバエラー: ": "Server error: ",
+    "有効。②を押すとサーバを起動します。": "Enabled. Press ② to start the server.",
+    "AI超解像（高解像度化）": "AI Upscale (super-resolution)",
+    "🔍 AI超解像の設定を開く…": "🔍 Open AI upscale settings…",
+    "有効": "Enabled",
+    "無効": "Disabled",
+    "このRARを開くには展開ツールが必要ですが、見つかりませんでした。\nPiewer同梱の unrar が読み込めていない可能性があります。\n（ZIP/CBZ形式に変換すると確実に開けます）":
+        "Opening this RAR needs an extraction tool, but none was found.\n"
+        "The bundled unrar may have failed to load.\n"
+        "(Converting it to ZIP/CBZ will always open.)",
     "🏷 この本のタグ": "🏷 Tags on this book",
     "タグを編集…": "Edit tags…",
     "この本からタグを外す": "Remove this tag from the book",

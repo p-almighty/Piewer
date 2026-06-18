@@ -12,6 +12,7 @@ from PySide6.QtGui import QIcon, QDesktopServices, QCursor
 import i18n
 from i18n import t
 import updater
+import config
 from config import (Library, Settings, PageSource, APP_STYLE, APP_VERSION,
                     SUPPORT_URL, RAR_SUPPORT, PDF_SUPPORT)
 from widgets import TitleBar, show_global_settings
@@ -556,6 +557,14 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, t("エラー"), t("読み込める画像がありません。")); return
         except Exception as e:
             QMessageBox.critical(self, t("エラー"), t("読み込み失敗:\n{e}").format(e=e)); return
+
+        # RAR は一覧はできても展開ツールが無いと中身を読めない（圧縮/RAR5）。
+        # 無言でブランク表示になるのを避け、原因を伝える。
+        if getattr(source, "_type", "") == "rar" and not config.rar_tool_ready():
+            QMessageBox.warning(self, t("エラー"),
+                t("このRARを開くには展開ツールが必要ですが、見つかりませんでした。\n"
+                  "Piewer同梱の unrar が読み込めていない可能性があります。\n"
+                  "（ZIP/CBZ形式に変換すると確実に開けます）")); return
 
         start_page = 0
         last = book.get("last_page", 0)

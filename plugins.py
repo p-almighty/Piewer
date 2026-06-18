@@ -14,11 +14,13 @@
   ・フォルダ（推奨）       plugins/foo/plugin.py  （helper等を同梱できる）
   いずれも `register()` を公開し、着色プロバイダ（下記の契約）を返す。
 
-着色プロバイダの契約（ダックタイピング。必須属性が揃っていれば良い）:
+プロバイダの契約（ダックタイピング。必須属性が揃っていれば良い）:
   id: str                      一意なID（英数）
   name: str                    表示名
   version: str                 版（キャッシュ無効化に使う）
+  ── 能力（どちらか／両方）──
   colorize(img, opts) -> img   PIL.Image(RGB) を受け取り着色した PIL.Image を返す
+  upscale(img, opts) -> img    PIL.Image(RGB) を受け取り高解像度化した PIL.Image を返す
   ── 任意 ──
   available() -> (bool, str)   使える状態か（依存/接続チェック）と理由
   description: str             説明文
@@ -33,11 +35,14 @@ from pathlib import Path
 
 import config
 
-# 着色プロバイダに最低限必要な属性
-_REQUIRED = ("id", "name", "version", "colorize")
+# どのプロバイダにも最低限必要な属性（能力メソッドは別途チェック）
+_REQUIRED = ("id", "name", "version")
+# 能力メソッド: 属性名 -> 登録先レジストリのキー
+_CAPABILITIES = ("colorize", "upscale")
 
-# 探索結果のキャッシュ
+# 探索結果のキャッシュ（能力ごとにレジストリを分ける）
 _colorizers: dict[str, object] = {}
+_upscalers: dict[str, object] = {}
 _errors: list[tuple[str, str]] = []
 _loaded = False
 
@@ -133,13 +138,17 @@ def _load_one(mod_name: str, path: Path):
         missing = [a for a in _REQUIRED if not hasattr(provider, a)]
         if missing:
             raise TypeError("プロバイダに属性が不足: " + ", ".join(missing))
-        if not callable(getattr(provider, "colorize")):
-            raise TypeError("colorize が呼び出し可能ではありません")
+        # 能力（colorize / upscale）を1つ以上、呼び出し可能な形で備えていること
+        caps = [c for c in _CAPABILITIES if callable(getattr(provider, c, None))]
+        if not caps:
+            raise TypeError("colorize / upscale のいずれも実装されていません")
         pid = str(provider.id)
+        setattr(provider, "_dir", str(path.parent))
         # 同IDが既にあれば先勝ち（ユーザーフォルダが配布同梱より優先される順序）
-        if pid not in _colorizers:
-            setattr(provider, "_dir", str(path.parent))
+        if "colorize" in caps and pid not in _colorizers:
             _colorizers[pid] = provider
+        if "upscale" in caps and pid not in _upscalers:
+            _upscalers[pid] = provider
     except Exception:
         _errors.append((str(path), traceback.format_exc(limit=4)))
 
@@ -149,7 +158,7 @@ def discover(force: bool = False) -> list[object]:
     global _loaded
     if _loaded and not force:
         return list(_colorizers.values())
-    _colorizers.clear(); _errors.clear()
+    _colorizers.clear(); _upscalers.clear(); _errors.clear()
     for mod_name, path in _entry_files():
         _load_one(mod_name, path)
     _loaded = True
@@ -158,7 +167,8 @@ def discover(force: bool = False) -> list[object]:
 
 def colorizers() -> list[object]:
     """着色プロバイダ一覧（未探索なら探索する）。"""
-    return discover()
+    discover()
+    return list(_colorizers.values())
 
 
 def get_colorizer(pid: str | None):
@@ -167,6 +177,20 @@ def get_colorizer(pid: str | None):
         return None
     discover()
     return _colorizers.get(str(pid))
+
+
+def upscalers() -> list[object]:
+    """超解像プロバイダ一覧（未探索なら探索する）。"""
+    discover()
+    return list(_upscalers.values())
+
+
+def get_upscaler(pid: str | None):
+    """ID指定で超解像プロバイダを返す。無ければ None。"""
+    if not pid:
+        return None
+    discover()
+    return _upscalers.get(str(pid))
 
 
 def load_errors() -> list[tuple[str, str]]:

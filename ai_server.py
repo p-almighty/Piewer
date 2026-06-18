@@ -1,13 +1,13 @@
-"""ローカル着色サーバの生存管理（フェーズA）。
+"""ローカルAIサーバ（着色／超解像）の生存管理。
 
-Piewer が tools/local_color_server.py を子プロセスとして起動/停止する。これにより
-ユーザーは「ターミナルでコマンドを打つ」必要がなくなる（ランタイムさえあれば）。
-重い依存(torch等)はその子プロセス側にあり、Piewer本体には入らない。
+Piewer が tools/local_color_server.py / tools/local_upscale_server.py を子プロセスとして
+起動/停止する。これによりユーザーは「ターミナルでコマンドを打つ」必要がなくなる
+（ランタイムさえあれば）。重い依存(torch等)はその子プロセス側にあり、Piewer本体には
+入らない。
 
-将来（フェーズB）は python/repo/重み を ~/.manga_viewer/ai_runtime へ自動構築し、
-ここへ渡す。今は設定で python と repo のパスを指定する。
+共通のプロセス生存管理は _BaseServerManager にまとめ、着色／超解像はサーバスクリプトと
+起動引数・エンドポイントのパスだけを差し替えるサブクラスにしている。
 """
-import os
 import sys
 import socket
 import shutil
@@ -17,13 +17,23 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
 
-def default_server_script() -> str:
-    """同梱の着色サーバスクリプトのパス（dev=本体隣 / frozen=_MEIPASS）。"""
+def _bundled_script(name: str) -> str:
+    """同梱の tools/<name> のパス（dev=本体隣 / frozen=_MEIPASS）。"""
     if getattr(sys, "frozen", False):
         base = Path(getattr(sys, "_MEIPASS", "")) or Path(sys.executable).resolve().parent
     else:
         base = Path(__file__).resolve().parent
-    return str(base / "tools" / "local_color_server.py")
+    return str(base / "tools" / name)
+
+
+def default_server_script() -> str:
+    """同梱の着色サーバスクリプトのパス。"""
+    return _bundled_script("local_color_server.py")
+
+
+def default_upscale_server_script() -> str:
+    """同梱の超解像サーバスクリプトのパス。"""
+    return _bundled_script("local_upscale_server.py")
 
 
 def has_nvidia_gpu() -> bool:
@@ -49,8 +59,12 @@ def port_available(port: int) -> bool:
         s.close()
 
 
-class ColorServerManager(QObject):
-    """着色サーバの起動/停止を管理する。状態は status_changed で通知。"""
+class _BaseServerManager(QObject):
+    """ローカルAIサーバの起動/停止の共通管理。状態は status_changed で通知。
+
+    サブクラスは ENDPOINT_PATH（"/colorize" 等）と、起動引数を組み立てて _launch を
+    呼ぶ start() を用意する。
+    """
 
     status_changed = Signal(str, str)   # (status, message)
 
@@ -58,6 +72,9 @@ class ColorServerManager(QObject):
     STARTING = "starting"
     RUNNING = "running"
     ERROR = "error"
+
+    ENDPOINT_PATH = "/"
+    READY_LABEL = "サーバ"   # エラーメッセージ等の表示名
 
     def __init__(self):
         super().__init__()
@@ -82,7 +99,7 @@ class ColorServerManager(QObject):
     def device(self) -> str: return self._device
 
     def endpoint(self) -> str:
-        return f"http://127.0.0.1:{self._port}/colorize" if self._port else ""
+        return f"http://127.0.0.1:{self._port}{self.ENDPOINT_PATH}" if self._port else ""
 
     def is_running(self) -> bool:
         return self._status == self.RUNNING
@@ -96,27 +113,12 @@ class ColorServerManager(QObject):
 
     # ── 起動 / 停止 ─────────────────────────────────────────
 
-    def start(self, python: str, repo: str, device: str = "cpu", port: int = 7860,
-              saturation: float = 1.0, server_script: str = ""):
-        if self.is_active():
-            return
-        script = server_script or default_server_script()
-        checks = [("Python", python), ("着色サーバ", script), ("モデルのフォルダ", repo)]
-        for label, p in checks:
-            if not p or not Path(p).exists():
-                self._set(self.ERROR, f"{label} が見つかりません: {p}")
-                return
-        if not port_available(port):
-            self._set(self.ERROR, f"ポート {port} が使用中です。設定で別のポートにしてください。")
-            return
+    def _launch(self, python: str, args: list, device: str, port: int):
+        """共通の起動処理。args は [script, ...] のフルコマンド引数。"""
         self._port = port
         self._device = device
         self._stderr = b""
         self._stopping = False
-        args = [script, "--backend", "manga2", "--repo", repo,
-                "--device", device, "--port", str(port)]
-        if abs(float(saturation) - 1.0) > 0.01:
-            args += ["--saturation", str(saturation)]
         self._proc = QProcess(self)
         self._proc.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
         self._proc.readyReadStandardError.connect(self._on_stderr)
@@ -190,16 +192,94 @@ class ColorServerManager(QObject):
             self._set(self.ERROR, "起動がタイムアウトしました（初回はモデル読込で時間がかかります）")
 
 
+class ColorServerManager(_BaseServerManager):
+    """着色サーバ（tools/local_color_server.py）の起動/停止を管理する。"""
+
+    ENDPOINT_PATH = "/colorize"
+
+    def start(self, python: str, repo: str, device: str = "cpu", port: int = 7860,
+              saturation: float = 1.0, server_script: str = ""):
+        if self.is_active():
+            return
+        script = server_script or default_server_script()
+        checks = [("Python", python), ("着色サーバ", script), ("モデルのフォルダ", repo)]
+        for label, p in checks:
+            if not p or not Path(p).exists():
+                self._set(self.ERROR, f"{label} が見つかりません: {p}")
+                return
+        if not port_available(port):
+            self._set(self.ERROR, f"ポート {port} が使用中です。設定で別のポートにしてください。")
+            return
+        args = [script, "--backend", "manga2", "--repo", repo,
+                "--device", device, "--port", str(port)]
+        if abs(float(saturation) - 1.0) > 0.01:
+            args += ["--saturation", str(saturation)]
+        self._launch(python, args, device, port)
+
+
+class UpscaleServerManager(_BaseServerManager):
+    """超解像サーバ（tools/local_upscale_server.py）の起動/停止を管理する。
+
+    backend="demo" は依存なし（Lanczos拡大）ですぐ動く。backend="cugan" は Real-CUGAN
+    （torch＋重みが必要）。repo/weights_dir/model は cugan のときだけ要る。
+    """
+
+    ENDPOINT_PATH = "/upscale"
+
+    def start(self, python: str, device: str = "cpu", port: int = 7861,
+              backend: str = "demo", repo: str = "", weights_dir: str = "",
+              model: str = "", scale: int = 2, denoise: int = 1, half: bool = False,
+              server_script: str = ""):
+        if self.is_active():
+            return
+        script = server_script or default_upscale_server_script()
+        checks = [("Python", python), ("超解像サーバ", script)]
+        if backend == "cugan":
+            checks.append(("モデルのフォルダ", repo))
+        for label, p in checks:
+            if not p or not Path(p).exists():
+                self._set(self.ERROR, f"{label} が見つかりません: {p}")
+                return
+        if not port_available(port):
+            self._set(self.ERROR, f"ポート {port} が使用中です。設定で別のポートにしてください。")
+            return
+        args = [script, "--backend", backend, "--device", device,
+                "--port", str(port), "--scale", str(int(scale))]
+        if backend == "cugan":
+            args += ["--repo", repo, "--denoise", str(int(denoise))]
+            if weights_dir:
+                args += ["--weights-dir", weights_dir]
+            if model:
+                args += ["--model", model]
+            if half:
+                args += ["--half"]
+        self._launch(python, args, device, port)
+
+
 _manager: ColorServerManager | None = None
+_upscale_manager: UpscaleServerManager | None = None
+
+
+def _connect_quit(mgr):
+    from PySide6.QtCore import QCoreApplication
+    app = QCoreApplication.instance()
+    if app is not None:
+        app.aboutToQuit.connect(mgr.stop)   # 終了時に子プロセスを確実に止める
 
 
 def get_manager() -> ColorServerManager:
-    """アプリ内で共有する単一のサーバ管理インスタンス。"""
+    """アプリ内で共有する単一の着色サーバ管理インスタンス。"""
     global _manager
     if _manager is None:
         _manager = ColorServerManager()
-        from PySide6.QtCore import QCoreApplication
-        app = QCoreApplication.instance()
-        if app is not None:
-            app.aboutToQuit.connect(_manager.stop)   # 終了時に子プロセスを確実に止める
+        _connect_quit(_manager)
     return _manager
+
+
+def get_upscale_manager() -> UpscaleServerManager:
+    """アプリ内で共有する単一の超解像サーバ管理インスタンス。"""
+    global _upscale_manager
+    if _upscale_manager is None:
+        _upscale_manager = UpscaleServerManager()
+        _connect_quit(_upscale_manager)
+    return _upscale_manager

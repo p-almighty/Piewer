@@ -15,6 +15,47 @@ try:
 except ImportError:
     RAR_SUPPORT = False
 
+
+def _configure_rar_tool():
+    """RAR展開ツールを設定する。
+
+    rarfile は一覧取得は純Pythonでできるが、圧縮エントリ/RAR5 の展開には外部ツールが
+    必要。配布物に同梱した tools/unrar.exe を最優先で使い（ユーザー環境にツールが無くても
+    確実に読める）、無ければ rarfile が PATH 上の unrar/7z/bsdtar 等を自動探索する。
+    """
+    if not RAR_SUPPORT:
+        return
+    import sys
+    name = "unrar.exe" if sys.platform.startswith("win") else "unrar"
+    bases = []
+    if getattr(sys, "frozen", False):
+        mei = getattr(sys, "_MEIPASS", "")
+        if mei:
+            bases.append(Path(mei))
+        bases.append(Path(sys.executable).resolve().parent)
+    else:
+        bases.append(Path(__file__).resolve().parent)
+    for base in bases:
+        cand = base / "tools" / name
+        if cand.exists():
+            rarfile.UNRAR_TOOL = str(cand)
+            return
+
+
+_configure_rar_tool()
+
+
+def rar_tool_ready() -> bool:
+    """RAR の圧縮エントリを展開できる外部ツールが使えるか（診断用）。"""
+    if not RAR_SUPPORT:
+        return False
+    try:
+        rarfile.tool_setup(force=True)
+        return True
+    except Exception:
+        return False
+
+
 try:
     import fitz  # PyMuPDF
     PDF_SUPPORT = True
@@ -60,13 +101,14 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 COVER_GEN_W, COVER_GEN_H = 210, 290
 CARD_SPACING = 16
 APP_NAME = "Piewer"
-APP_VERSION = "1.81"
+APP_VERSION = "1.90"
 # 完全無料・オープンソース。登録数の制限はなし。寄付（任意）の受け口。
 SUPPORT_URL = "https://ko-fi.com/p_almighty"   # 寄付（Ko-fi）。後で差し替え可
 # 履歴棚（最近読んだ本）
 HISTORY_ID = "__history__"
 HISTORY_NAME = "最近読んだ本"
 HISTORY_MAX = 100
+RECENT_TAGS_MAX = 30   # 「最近つけたタグ」の保持数（表示は先頭5件）
 # お気に入り棚（★を付けた本だけを集めた仮想本棚）
 FAVORITES_ID = "__favorites__"
 FAVORITES_NAME = "お気に入り"
@@ -184,6 +226,7 @@ class Settings:
         self.tag_labels = {}          # オートタグ分類名の上書き {役割キー:表示名}（空=既定）
         self.image_fx = {}            # 画質補正/擬似カラー化の設定（空=既定OFF。image_fx.DEFAULT参照）
         self.ai_color = {}            # AI着色（プラグイン）の設定（空=既定OFF。ai_color.DEFAULT参照）
+        self.ai_upscale = {}          # AI超解像（プラグイン）の設定（空=既定OFF。ai_upscale.DEFAULT参照）
         self.accent = "violet"        # アクセント色プリセット名
         self.theme = "dark"           # テーマ: "dark" / "light"
         self.lang = ""              # ""=未設定(初回にOSロケールから判定) / "ja" / "en"
@@ -219,6 +262,9 @@ class Settings:
                 ac = d.get("ai_color")
                 if isinstance(ac, dict):
                     self.ai_color = ac
+                au = d.get("ai_upscale")
+                if isinstance(au, dict):
+                    self.ai_upscale = au
                 self.accent = str(d.get("accent", "violet"))
                 if d.get("theme") in ("dark", "light"):
                     self.theme = d["theme"]
@@ -242,8 +288,8 @@ class Settings:
                         "drag_zoom": self.drag_zoom, "browse_path": self.browse_path,
                         "auto_tag_on_add": self.auto_tag_on_add, "accent": self.accent,
                         "tag_labels": self.tag_labels, "image_fx": self.image_fx,
-                        "ai_color": self.ai_color, "theme": self.theme,
-                        "shortcuts": self.shortcuts},
+                        "ai_color": self.ai_color, "ai_upscale": self.ai_upscale,
+                        "theme": self.theme, "shortcuts": self.shortcuts},
                        ensure_ascii=False),
             encoding="utf-8")
 
@@ -281,6 +327,7 @@ class Settings:
         self.resume_mode = "continue"; self.drag_zoom = True
         self.auto_tag_on_add = False
         self.tag_labels = {}; self.image_fx = {}; self.ai_color = {}
+        self.ai_upscale = {}
         self.shortcuts = default_shortcuts()
         self._load(); set_covers_dir(self.covers_dir)
 
@@ -303,6 +350,8 @@ class Library:
         self.shelves: list[dict] = []
         self.active_shelf_id: str = ""
         self.history: list[str] = []   # 最近読んだ本のID（新しい順・最大HISTORY_MAX）
+        self.recent_tags: list[str] = []  # 最近つけたタグ（新しい順・最大RECENT_TAGS_MAX）
+        self.shelf_sorts: dict[str, str] = {}  # 本棚ID -> 並び順（既定"added"は持たない）
         self._path_cache: set[str] = set()
         self.limit: int | None = None  # 登録上限（常にNone＝無制限。完全無料）
         self._load()
@@ -327,6 +376,10 @@ class Library:
                     self.shelves = data.get("shelves", [])
                 self.active_shelf_id = data.get("active_shelf", "")
                 self.history = data.get("history", [])
+                self.recent_tags = [str(t) for t in data.get("recent_tags", [])]
+                ss = data.get("shelf_sorts", {})
+                if isinstance(ss, dict):
+                    self.shelf_sorts = {str(k): str(v) for k, v in ss.items()}
             except Exception:
                 pass
         if not self.shelves:
@@ -343,7 +396,8 @@ class Library:
     def save(self):
         LIBRARY_FILE.write_text(
             json.dumps({"shelves": self.shelves, "active_shelf": self.active_shelf_id,
-                        "history": self.history},
+                        "history": self.history, "recent_tags": self.recent_tags,
+                        "shelf_sorts": self.shelf_sorts},
                        ensure_ascii=False, indent=2), encoding="utf-8")
 
     # ── 履歴棚 ──────────────────────────────────────────────
@@ -452,6 +506,23 @@ class Library:
         if sid in VIRTUAL_SHELF_IDS or any(s["id"] == sid for s in self.shelves):
             self.active_shelf_id = sid; self.save()
 
+    def get_shelf_sort(self, sid: str) -> str:
+        """本棚の保存済み並び順を返す（未設定は既定 "added"）。"""
+        return self.shelf_sorts.get(sid, "added")
+
+    def set_shelf_sort(self, sid: str, mode: str):
+        """本棚ごとの並び順を保存（既定 "added" はキーを持たずファイルを軽く保つ）。"""
+        if not sid:
+            return
+        if mode == "added":
+            if self.shelf_sorts.pop(sid, None) is None:
+                return   # 変化なし＝保存不要
+        else:
+            if self.shelf_sorts.get(sid) == mode:
+                return
+            self.shelf_sorts[sid] = mode
+        self.save()
+
     def reorder_shelf(self, src_id: str, target_id: str | None):
         """src_id の本棚を target_id の直前へ移動。target_id が空/Noneなら末尾へ。"""
         if src_id == target_id: return
@@ -481,6 +552,7 @@ class Library:
     def delete_shelf(self, sid: str):
         if len(self.shelves) <= 1: return
         self.shelves = [s for s in self.shelves if s["id"] != sid]
+        self.shelf_sorts.pop(sid, None)   # 並び順の記憶も掃除
         if self.active_shelf_id == sid:
             self.active_shelf_id = self.shelves[0]["id"]
         self.save()
@@ -608,6 +680,38 @@ class Library:
             self.save()
         return len(changed)
 
+    def note_recent_tags(self, tags):
+        """直近につけたタグを記録（新しい順・最大RECENT_TAGS_MAX件）。
+
+        tags は適用順（古い→新しい想定でなくてよい）。リストの並び順を
+        保ったまま先頭へ積み、既出は重複させない。
+        """
+        changed = False
+        for raw in tags:
+            t = str(raw).strip()
+            if not t:
+                continue
+            if self.recent_tags and self.recent_tags[0] == t:
+                continue
+            if t in self.recent_tags:
+                self.recent_tags.remove(t)
+            self.recent_tags.insert(0, t)
+            changed = True
+        if len(self.recent_tags) > RECENT_TAGS_MAX:
+            self.recent_tags = self.recent_tags[:RECENT_TAGS_MAX]
+            changed = True
+        if changed:
+            self.save()
+
+    def recent_tags_list(self, n: int = 5) -> list[str]:
+        """最近つけたタグを最大n件返す。すでに消えたタグは除外。"""
+        existing = set()
+        for shelf in self.shelves:
+            for b in shelf["books"]:
+                existing.update(b.get("tags", []))
+        out = [t for t in self.recent_tags if t in existing]
+        return out[:n]
+
     def all_tags(self) -> list[str]:
         """登録済みの全タグを重複なくソートして返す。"""
         tags = set()
@@ -664,6 +768,7 @@ class Library:
     def reload(self):
         """ファイルから読み直す（バックアップ復元後などに使用）。"""
         self.shelves = []; self.active_shelf_id = ""; self.history = []
+        self.shelf_sorts = {}
         self._load()
 
     # ── 本棚間の移動 ────────────────────────────────────────

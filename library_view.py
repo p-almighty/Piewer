@@ -33,6 +33,7 @@ class LibraryView(QWidget):
         self.cards: dict[str, BookCard] = {}
         self.pool = QThreadPool.globalInstance()
         self._sort_mode = "added"; self._filter = ""
+        self._sort_shelf_id = None           # 並び順を読み込んだ本棚ID（切替検出用）
         self._search_all = False            # 全本棚を横断検索
         self._fav_filter = False            # ★お気に入りのみ表示
         self._tag_filter: set[str] = set()  # 選択中のタグ
@@ -418,10 +419,25 @@ class LibraryView(QWidget):
         if chosen in acts:
             self._set_sort(acts[chosen])
 
+    def _refresh_sort_label(self):
+        self._sort_btn.setText(
+            t("並び替え: {label} ▾").format(label=t(self.SORT_LABELS.get(self._sort_mode, ''))))
+
     def _set_sort(self, mode: str):
         self._sort_mode = mode
-        self._sort_btn.setText(t("並び替え: {label} ▾").format(label=t(self.SORT_LABELS.get(mode, ''))))
+        # いま開いている本棚の並び順として記憶する（次回その棚を開くと復元）
+        self._sort_shelf_id = self.library.active_shelf_id
+        self.library.set_shelf_sort(self._sort_shelf_id, mode)
+        self._refresh_sort_label()
         self.refresh()
+
+    def _load_shelf_sort(self):
+        """アクティブ本棚が変わったら、その棚の保存済み並び順を読み込む。"""
+        sid = self.library.active_shelf_id
+        if sid != self._sort_shelf_id:
+            self._sort_shelf_id = sid
+            self._sort_mode = self.library.get_shelf_sort(sid)
+            self._refresh_sort_label()
 
     def _on_search(self, text: str):
         self._filter = fold_text(text); self.refresh()   # かな/全半角を区別しない
@@ -556,9 +572,10 @@ class LibraryView(QWidget):
             elif kind == "tooltip": w.setToolTip(t(jp))
             elif kind == "placeholder": w.setPlaceholderText(t(jp))
         # 動的に変わるもの
-        self._set_sort(self._sort_mode)      # 並び替えボタン（ラベル＋再描画）
+        self._refresh_sort_label()           # 並び替えボタンのラベルを言語に合わせ直す
         self._update_filter_btn()
         self._update_sel_count()
+        self.refresh()                       # 訳し直した文言で再描画
 
     def has_active_filter(self) -> bool:
         return self._fav_filter or bool(self._tag_filter) or self._read_filter != "all"
@@ -662,11 +679,13 @@ class LibraryView(QWidget):
     def _edit_tags(self, bid: str):
         book = self.library.get(bid)
         if not book: return
-        dlg = TagEditDialog(book.get("tags", []), self.library.all_tags(), self)
+        dlg = TagEditDialog(book.get("tags", []), self.library.all_tags(), self,
+                            recent_tags=self.library.recent_tags_list(5))
         if not dlg.exec():
             return
         tags = dlg.result_tags()
         self.library.set_tags(bid, tags)
+        self.library.note_recent_tags(tags)
         card = self.cards.get(bid)
         if card: card.set_tags(tags)
         if self._tag_filter:
@@ -792,6 +811,7 @@ class LibraryView(QWidget):
 
     def refresh(self):
         self._stop_mid(); self._smooth_timer.stop(); self._fling_timer.stop()
+        self._load_shelf_sort()   # 本棚が変わっていたら、その棚の並び順を復元
         self._set_shelf_name(t(self.library.current_shelf["name"]))
         # 仮想棚（履歴・お気に入り）では「ファイル追加」を隠す
         virt = self.library.is_virtual_active

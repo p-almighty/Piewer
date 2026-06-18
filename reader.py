@@ -14,6 +14,7 @@ from image_utils import bytes_to_pixmap, combine_spread, apply_exif
 import image_utils
 import image_fx
 import ai_color
+import ai_upscale
 import ai_server
 from widgets import FlatBtn, ToggleBtn
 from i18n import t
@@ -992,6 +993,27 @@ class _BatchColorWorker(QRunnable):
         self.signals.finished.emit(ok, total, False)
 
 
+class _AiUpscaleWorker(QRunnable):
+    """1ページをバックグラウンドで高解像度化してキャッシュに保存する（UIを止めない）。
+
+    着色ワーカーの双子。入力 data は「原画 or 着色済み」のバイト列（着色を先に通した
+    結果に超解像をかけられるよう、呼び出し側で決めて渡す）。
+    """
+
+    def __init__(self, idx: int, data: bytes, cfg: dict, gen: int):
+        super().__init__()
+        self.idx = idx; self.data = data; self.cfg = cfg; self.gen = gen
+        self.signals = _AiColorSignals()   # done(idx, gen, ok) を流用
+
+    def run(self):
+        ok = False
+        try:
+            ok = ai_upscale.upscale_to_cache(self.data, self.cfg) is not None
+        except Exception:
+            ok = False
+        self.signals.done.emit(self.idx, self.gen, ok)
+
+
 class ReaderView(QWidget):
     back_requested = Signal()
     bookmark_changed = Signal(str, list)   # (book_id, bookmarks)
@@ -1026,6 +1048,10 @@ class ReaderView(QWidget):
         self._ai_gen: int = 0                 # 本/設定が変わったら++して古い結果を捨てる
         self._ai_failed: bool = False         # 直近の着色が失敗したか（バッジ表示用）
         self._batch_cancel: bool = False      # 全ページ着色の中止フラグ
+        self._up_pool = QThreadPool(); self._up_pool.setMaxThreadCount(1)
+        self._up_inflight: set[int] = set()   # 超解像をキュー/実行中のページ番号
+        self._up_gen: int = 0                 # 本/設定が変わったら++して古い結果を捨てる
+        self._up_failed: bool = False         # 直近の超解像が失敗したか（バッジ表示用）
         self._setup_ui()
 
     def _setup_ui(self):
@@ -1478,6 +1504,8 @@ class ReaderView(QWidget):
         image_utils.set_fx(self.settings.image_fx)   # 画質補正/擬似カラー化を反映
         self._ai_gen += 1; self._ai_inflight.clear()   # 前の本のAI着色を打ち切る
         self._ai_failed = False; self._ai_badge.setVisible(False)
+        self._up_gen += 1; self._up_inflight.clear()   # 前の本のAI超解像を打ち切る
+        self._up_failed = False
         self.book_id = book["id"]; self.source = source
         self._bookmarks = sorted(int(p) for p in book.get("bookmarks", []))
         self._clear_px_cache()   # 別の本のページが残らないようにクリア
@@ -1678,11 +1706,13 @@ class ReaderView(QWidget):
         # デコード済みページをLRUキャッシュ（連続ページ送り・往復を高速化）
         key = (idx, self.spread_mode, self.spread_offset, self.rtl_mode,
                image_fx.signature(self.settings.image_fx),
-               ai_color.signature(self.settings.ai_color))
-        # AI着色ONなら、px キャッシュにヒットするか否かに関係なく未着色ページの着色を予約する。
-        # （先読みが原画pixmapをキャッシュしていても、表示時にちゃんと着色が走るように）
+               ai_color.signature(self.settings.ai_color),
+               ai_upscale.signature(self.settings.ai_upscale))
+        # AI着色/超解像ONなら、px キャッシュにヒットするか否かに関係なく未処理ページの加工を予約する。
+        # （先読みが原画pixmapをキャッシュしていても、表示時にちゃんと加工が走るように）
         if enqueue:
             self._ensure_colorize(idx)
+            self._ensure_upscale(idx)
         cached = self._px_cache.get(key)
         if cached is not None:
             return cached
@@ -1708,7 +1738,8 @@ class ReaderView(QWidget):
 
     def _open_image_fx(self, *_):
         from widgets import ImageFxDialog
-        ImageFxDialog(self.settings, on_change=self.apply_image_fx, parent=self).exec()
+        ImageFxDialog(self.settings, on_change=self.apply_image_fx,
+                      parent=self, reader=self).exec()
 
     def apply_image_fx(self):
         """画質補正/擬似カラー化の設定変更を即座に反映（キャッシュ破棄＋再描画）。"""
@@ -1724,13 +1755,22 @@ class ReaderView(QWidget):
 
     # ── AI着色（プラグイン・非同期） ────────────────────────
 
-    def _page_bytes(self, idx: int) -> bytes:
-        """ページのバイト列を返す。AI着色ONで着色済みキャッシュがあればそれを、無ければ原画。"""
+    def _pre_upscale_bytes(self, idx: int) -> bytes:
+        """超解像にかける前のバイト列＝AI着色ONで着色済みならそれ、無ければ原画。"""
         raw = self.source.read(idx)
         if not ai_color.active(self.settings.ai_color):
             return raw
         colored = ai_color.cached_bytes(raw, self.settings.ai_color)
         return colored if colored is not None else raw
+
+    def _page_bytes(self, idx: int) -> bytes:
+        """表示に使うバイト列。着色→超解像の順に、キャッシュがある段階まで適用して返す。"""
+        data = self._pre_upscale_bytes(idx)
+        if ai_upscale.active(self.settings.ai_upscale):
+            up = ai_upscale.cached_bytes(data, self.settings.ai_upscale)
+            if up is not None:
+                return up
+        return data
 
     def _ensure_colorize(self, idx: int):
         """このページ（見開きなら2枚）が未着色なら、バックグラウンド着色を予約する。"""
@@ -1778,18 +1818,144 @@ class ReaderView(QWidget):
             self._ai_failed = True
         self._update_ai_badge()
 
+    # ── AI超解像（プラグイン・非同期） ──────────────────────
+
+    def _ensure_upscale(self, idx: int):
+        """このページ（見開きなら2枚）が「表示より小さい」なら超解像を予約する。"""
+        if not ai_upscale.active(self.settings.ai_upscale):
+            return
+        if not ai_upscale.signature(self.settings.ai_upscale):
+            return
+        view_w = max(1, self._display.width())
+        view_h = max(1, self._display.height())
+        pages = [idx]
+        if self._is_spread_start(idx):
+            pages.append(idx + 1)
+        for i in pages:
+            if i in self._up_inflight:
+                continue
+            try:
+                raw = self.source.read(i)
+            except Exception:
+                continue
+            # 着色ONで未着色なら、着色後の画像を入力にしたいのでこの回は待つ
+            if (ai_color.active(self.settings.ai_color)
+                    and ai_color.cached_bytes(raw, self.settings.ai_color) is None):
+                continue
+            data = self._pre_upscale_bytes(i)
+            try:
+                with Image.open(io.BytesIO(data)) as im:
+                    sw, sh = im.size
+            except Exception:
+                continue
+            if not ai_upscale.should_upscale(sw, sh, view_w, view_h,
+                                             self.settings.ai_upscale):
+                continue
+            if ai_upscale.cached_bytes(data, self.settings.ai_upscale) is None:
+                self._queue_upscale(i, data)
+
+    def _queue_upscale(self, idx: int, data: bytes):
+        if idx in self._up_inflight:
+            return
+        if not ai_upscale.signature(self.settings.ai_upscale):
+            return
+        self._up_inflight.add(idx)
+        self._up_failed = False
+        worker = _AiUpscaleWorker(idx, data, dict(self.settings.ai_upscale), self._up_gen)
+        worker.signals.done.connect(self._on_upscaled)
+        self._up_pool.start(worker)
+        self._update_ai_badge()
+
+    def _on_upscaled(self, idx: int, gen: int, ok: bool):
+        if gen != self._up_gen:
+            return   # 別の本/設定に切り替わった後に届いた古い結果は無視
+        self._up_inflight.discard(idx)
+        if ok:
+            self._clear_px_cache()
+            self._next_px = self._prev_px = None
+            if self.source and not self.webtoon_mode:
+                self._show_current()
+        else:
+            self._up_failed = True
+        self._update_ai_badge()
+
+    def _open_ai_upscale(self, *_):
+        from widgets import AiUpscaleDialog
+        AiUpscaleDialog(self.settings, on_change=self.apply_ai_upscale,
+                        reader=self, parent=self).exec()
+
+    def apply_ai_upscale(self):
+        """AI超解像の設定変更を反映（進行中を無効化＋キャッシュ破棄＋再描画）。"""
+        self._up_gen += 1
+        self._up_inflight.clear()
+        self._up_failed = False
+        self._clear_px_cache()
+        self._next_px = self._prev_px = None
+        self._sync_managed_upscale_server()   # Piewer管理サーバの起動/停止
+        self._update_ai_badge()
+        if not self.source:
+            return
+        if not self.webtoon_mode:
+            self._show_current()
+
+    def _sync_managed_upscale_server(self):
+        """設定に応じて超解像サーバを起動/停止する（Piewerがサーバを管理する場合）。"""
+        import ai_runtime
+        cfg = ai_upscale.merge(self.settings.ai_upscale)
+        sv = cfg["server"]
+        mgr = ai_server.get_upscale_manager()
+        if not getattr(self, "_up_srv_connected", False):
+            mgr.status_changed.connect(self._on_upscale_server_status)
+            self._up_srv_connected = True
+        if cfg["on"] and sv.get("manage"):
+            if mgr.is_running():
+                self._on_upscale_server_status(ai_server.UpscaleServerManager.RUNNING, "")
+            elif not mgr.is_active():
+                scale = int(sv.get("scale", 2)); denoise = int(sv.get("denoise", 1))
+                ready = ai_runtime.cugan_ready(scale, denoise)
+                # python は超解像用設定→無ければ着色と共用のランタイムPythonを流用
+                python = sv.get("python", "") or (
+                    str(ai_runtime.runtime_python_exe()) if ai_runtime.python_ready() else "")
+                mgr.start(python=python, device=sv.get("device", "cpu"),
+                          port=int(sv.get("port", 7861)),
+                          backend=("cugan" if ready else "demo"),
+                          repo=str(ai_runtime.cugan_repo_dir()) if ready else "",
+                          weights_dir=str(ai_runtime.cugan_weights_dir()) if ready else "",
+                          scale=scale, denoise=denoise)
+        elif mgr.is_active():
+            mgr.stop()
+
+    def _on_upscale_server_status(self, status: str, msg: str):
+        # サーバ起動完了で、起動待ちのページを描き直して再処理する。
+        if status == ai_server.UpscaleServerManager.RUNNING:
+            self._up_failed = False
+            self._clear_px_cache(); self._next_px = self._prev_px = None
+            if self.source and not self.webtoon_mode:
+                self._show_current()
+        self._update_ai_badge()
+
     def _update_ai_badge(self):
         """着色中／失敗／サーバ状態のバッジを右上に表示。アイドルかつ正常なら隠す。"""
         mgr = ai_server.get_manager()
         ai_on = ai_color.active(self.settings.ai_color)
+        upmgr = ai_server.get_upscale_manager()
+        up_on = ai_upscale.active(self.settings.ai_upscale)
         if ai_on and mgr.status == ai_server.ColorServerManager.STARTING:
             self._ai_badge.setText(t("🤖 着色サーバ起動中…（初回はモデル読込で時間がかかります）"))
         elif ai_on and mgr.status == ai_server.ColorServerManager.ERROR:
             self._ai_badge.setText(t("🤖 サーバエラー: ") + mgr.message[:80])
+        elif up_on and upmgr.status == ai_server.UpscaleServerManager.STARTING:
+            self._ai_badge.setText(t("🔍 超解像サーバ起動中…（初回はモデル読込で時間がかかります）"))
+        elif up_on and upmgr.status == ai_server.UpscaleServerManager.ERROR:
+            self._ai_badge.setText(t("🔍 サーバエラー: ") + upmgr.message[:80])
         elif self._ai_inflight:
             self._ai_badge.setText(t("🤖 AI着色中…"))
+        elif self._up_inflight:
+            self._ai_badge.setText(t("🔍 高解像度化中…"))
         elif self._ai_failed:
             self._ai_badge.setText(t("🤖 着色に失敗しました（設定/接続を確認）"))
+        elif self._up_failed:
+            self._ai_badge.setText(t("🔍 高解像度化に失敗しました（設定/接続を確認）"))
         else:
             self._ai_badge.setVisible(False)
             return

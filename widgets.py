@@ -596,12 +596,13 @@ class TagEditDialog(QDialog):
                 "QPushButton:hover{background:#3a3251;color:#eee;}"
                 "QPushButton:checked{background:#a06cff;color:white;border-color:#a06cff;}")
 
-    def __init__(self, current_tags, all_tags, parent=None):
+    def __init__(self, current_tags, all_tags, parent=None, recent_tags=None):
         super().__init__(parent)
         self.setWindowTitle(t("タグを編集"))
         self.setMinimumWidth(480)
         self._selected = list(dict.fromkeys(str(t) for t in current_tags))
         self._chips: dict[str, QPushButton] = {}
+        self._recent_chips: dict[str, QPushButton] = {}
         self.setStyleSheet("""
             QDialog { background:#262032; }
             QLabel { color:#ddd; font-size:13px; background:transparent; }
@@ -620,11 +621,24 @@ class TagEditDialog(QDialog):
 
         lay.addWidget(QLabel(t("タグをクリックで追加 / 解除。新しいタグは下の欄から追加できます。")))
 
+        # 最近つけたタグ（上部に候補として表示。クリックでそのまま追加/解除）
+        recent = list(dict.fromkeys(str(x).strip() for x in (recent_tags or []) if str(x).strip()))
+        if recent:
+            rlbl = QLabel(t("🕘 最近つけたタグ"))
+            rlbl.setStyleSheet("color:#bfa6ff; font-size:12px; background:transparent;")
+            lay.addWidget(rlbl)
+            rhost = QWidget(); rhost.setStyleSheet("background:transparent;")
+            rflow = FlowLayout(rhost, spacing=8)
+            for tag in recent[:5]:
+                rflow.addWidget(self._make_recent_chip(tag))
+            lay.addWidget(rhost)
+
         # 既存タグ＋現在のタグをチップとして表示（折り返し）
         host = QWidget(); host.setStyleSheet("background:transparent;")
         self._flow = FlowLayout(host, spacing=8)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(host)
         scroll.setMinimumHeight(150)
+        self._scroll = scroll
         lay.addWidget(scroll)
         for tag in dict.fromkeys(list(self._selected) + [str(x) for x in all_tags]):
             self._add_chip(tag)
@@ -668,20 +682,51 @@ class TagEditDialog(QDialog):
         self._chips[tag] = b
         return b
 
+    def _make_recent_chip(self, tag: str) -> QPushButton:
+        b = QPushButton(tag); b.setCheckable(True); b.setChecked(tag in self._selected)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        b.setStyleSheet(self.CHIP_QSS)
+        b.toggled.connect(lambda on, t=tag: self._on_recent_toggle(t, on))
+        self._recent_chips[tag] = b
+        return b
+
+    def _on_recent_toggle(self, tag: str, on: bool):
+        # 候補チップの操作を本体チップ（＝選択状態の正）へ反映
+        main = self._add_chip(tag)
+        if main is not None and main.isChecked() != on:
+            main.setChecked(on)
+
     def _on_toggle(self, tag: str, on: bool):
         if on and tag not in self._selected:
             self._selected.append(tag)
         elif not on and tag in self._selected:
             self._selected.remove(tag)
+        # 同じタグの候補チップがあれば表示を同期（シグナルの往復を防ぐ）
+        rb = self._recent_chips.get(tag)
+        if rb is not None and rb.isChecked() != on:
+            rb.blockSignals(True); rb.setChecked(on); rb.blockSignals(False)
+
+    def _match_existing(self, text: str) -> str | None:
+        """入力テキストと一致する既存タグ（大小文字・前後空白を無視）を返す。"""
+        low = text.strip().casefold()
+        for tag in self._chips:
+            if tag.casefold() == low:
+                return tag
+        return None
 
     def _add_new(self):
-        t = self._new_edit.text().strip()
-        if not t:
+        text = self._new_edit.text().strip()
+        if not text:
             return
         self._new_edit.clear()
-        b = self._add_chip(t)
+        # 既存タグと一致すれば新規作成せず、その既存タグを選択する
+        tag = self._match_existing(text) or text
+        b = self._add_chip(tag)
         if b is not None:
-            b.setChecked(True)   # toggled シグナルで _selected に追加される
+            if not b.isChecked():
+                b.setChecked(True)   # toggled シグナルで _selected に追加される
+            self._scroll.ensureWidgetVisible(b)   # 選択した既存タグを見える位置へ
 
     def result_tags(self) -> list[str]:
         return list(self._selected)
@@ -1118,11 +1163,12 @@ class CategoryLabelsDialog(QDialog):
 class ImageFxDialog(QDialog):
     """画質補正＋擬似カラー化（疑似色刷り）の設定。変更は即プレビュー反映する。"""
 
-    def __init__(self, settings, on_change=None, parent=None):
+    def __init__(self, settings, on_change=None, parent=None, reader=None):
         super().__init__(parent)
         import image_fx
         self.settings = settings
         self._on_change = on_change
+        self._reader = reader
         self._cfg = image_fx.merge(getattr(settings, "image_fx", {}) or {})
         self.setWindowTitle(t("🎨 画質・擬似カラー化"))
         self.setMinimumWidth(430)
@@ -1205,6 +1251,18 @@ class ImageFxDialog(QDialog):
         hint.setWordWrap(True); hint.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
         lay.addWidget(hint)
 
+        # ③ AI超解像（別ダイアログで設定。低解像度ページの高精細化）
+        sub(t("AI超解像（高解像度化）"))
+        urow = QHBoxLayout(); urow.setSpacing(8)
+        self._up_open_btn = QPushButton(t("🔍 AI超解像の設定を開く…"))
+        self._up_open_btn.clicked.connect(self._open_upscale)
+        urow.addWidget(self._up_open_btn)
+        self._up_state_lbl = QLabel("")
+        self._up_state_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        urow.addWidget(self._up_state_lbl, 1)
+        lay.addLayout(urow)
+        self._refresh_upscale_state()
+
         row = QHBoxLayout()
         reset = QPushButton(t("既定に戻す")); reset.clicked.connect(self._reset)
         row.addWidget(reset); row.addStretch()
@@ -1212,6 +1270,23 @@ class ImageFxDialog(QDialog):
         row.addWidget(close); lay.addLayout(row)
 
         self._refresh_labels(); self._apply_enabled_state()
+
+    def _open_upscale(self, *_):
+        import ai_upscale
+        on_change = self._reader.apply_ai_upscale if self._reader is not None else None
+        AiUpscaleDialog(self.settings, on_change=on_change,
+                        reader=self._reader, parent=self).exec()
+        self._refresh_upscale_state()
+
+    def _refresh_upscale_state(self):
+        import ai_upscale
+        on = ai_upscale.active(getattr(self.settings, "ai_upscale", {}) or {})
+        if on:
+            self._up_state_lbl.setText(t("有効"))
+            self._up_state_lbl.setStyleSheet("color:#7fd6a0;font-size:11px;background:transparent;")
+        else:
+            self._up_state_lbl.setText(t("無効"))
+            self._up_state_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
 
     def _reset(self):
         import image_fx
@@ -1273,6 +1348,50 @@ class _ColorTestWorker(QRunnable):
                 self.signals.done.emit(False, t("着色結果が空でした。"))
             else:
                 self.signals.done.emit(True, t("接続成功。着色サーバから画像を受け取れました。"))
+        except Exception as e:
+            self.signals.done.emit(False, str(e))
+
+
+class _UpscaleTestWorker(QRunnable):
+    """設定した超解像プラグインに小さなテスト画像を送り、繋がるか確認する（UIを止めない）。"""
+
+    def __init__(self, provider, opts: dict):
+        super().__init__()
+        self.provider = provider; self.opts = opts
+        self.signals = _ColorTestSignals()   # done(ok, msg) を流用
+
+    def run(self):
+        try:
+            from PIL import Image
+            test = Image.new("RGB", (48, 64), (200, 200, 200))
+            out = self.provider.upscale(test, dict(self.opts))
+            if out is None:
+                self.signals.done.emit(False, t("結果が空でした。"))
+            elif out.size[0] <= test.size[0]:
+                self.signals.done.emit(True, t("接続成功（ただし拡大されていません。サーバの拡大率を確認）。"))
+            else:
+                self.signals.done.emit(True, t("接続成功。超解像サーバから拡大画像を受け取れました。"))
+        except Exception as e:
+            self.signals.done.emit(False, str(e))
+
+
+class _CuganPrepWorker(QRunnable):
+    """Real-CUGAN の推論コード＋指定(scale,denoise)の重みをDLする（UIを止めない）。
+
+    torch/python は着色の構築分を流用する前提（深い依存は再導入しない）。
+    """
+
+    def __init__(self, scale: int, denoise: int):
+        super().__init__()
+        self.scale = scale; self.denoise = denoise
+        self.signals = _ColorTestSignals()   # done(ok, msg) を流用
+
+    def run(self):
+        try:
+            import ai_runtime
+            ai_runtime.download_cugan_repo()
+            ai_runtime.download_cugan_weight(self.scale, self.denoise)
+            self.signals.done.emit(True, t("Real-CUGAN の準備が完了しました。"))
         except Exception as e:
             self.signals.done.emit(False, str(e))
 
@@ -2285,6 +2404,361 @@ class AiColorDialog(_AiCacheMixin, QDialog):
 
     def closeEvent(self, e):
         self._apply()
+        super().closeEvent(e)
+
+
+class AiUpscaleDialog(QDialog):
+    """AI超解像（プラグイン）の設定＋有効化（リーダーHUDから開く）。
+
+    超解像プラグインは1つ（同梱 local_upscale）想定だが、複数あれば選べる。接続先・
+    拡大率をここで設定し、有効化すると「表示より小さいページ」を自動で高精細化する。
+    """
+
+    def __init__(self, settings, on_change=None, reader=None, parent=None):
+        super().__init__(parent)
+        import ai_upscale
+        import plugins
+        import ai_server
+        self.settings = settings
+        self._on_change = on_change
+        self._reader = reader
+        self._cfg = ai_upscale.merge(getattr(settings, "ai_upscale", {}) or {})
+        self._providers = list(plugins.upscalers())
+        self._pool = QThreadPool.globalInstance()
+        self._setting_up = False
+        self.setWindowTitle(t("🔍 AI超解像（高解像度化）"))
+        self.setMinimumWidth(470)
+        self.setStyleSheet(_AI_QSS)
+        lay = QVBoxLayout(self); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(9)
+
+        desc = QLabel(t("低解像度のページをAIで高精細に拡大します。表示より小さいページにだけ自動で効きます。"))
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color:#bbb;font-size:12px;background:transparent;")
+        lay.addWidget(desc)
+
+        # ── ① 仕上がりと実行先 ─────────────────────────────
+        self._step_label(lay, t("① 仕上がりと実行先を選ぶ"))
+        opt = QHBoxLayout(); opt.setSpacing(8)
+        opt.addWidget(QLabel(t("拡大")))
+        self._scale_cb = QComboBox()
+        for label, val in ((t("2倍（速い）"), 2), (t("4倍（精細）"), 4)):
+            self._scale_cb.addItem(label, val)
+        si = self._scale_cb.findData(int(self._cfg["server"].get("scale", 2)))
+        self._scale_cb.setCurrentIndex(si if si >= 0 else 0)
+        self._scale_cb.currentIndexChanged.connect(self._on_param_changed)
+        opt.addWidget(self._scale_cb)
+        opt.addSpacing(12)
+        opt.addWidget(QLabel(t("実行")))
+        self._dev_cb = QComboBox()
+        self._dev_cb.addItem(t("CPU"), "cpu")
+        self._dev_cb.addItem(t("GPU(CUDA)"), "cuda")
+        di = self._dev_cb.findData(self._cfg["server"].get("device", "cpu"))
+        self._dev_cb.setCurrentIndex(di if di >= 0 else 0)
+        self._dev_cb.currentIndexChanged.connect(self._on_param_changed)
+        opt.addWidget(self._dev_cb); opt.addStretch()
+        lay.addLayout(opt)
+
+        # ── ② ワンボタンで準備 ─────────────────────────────
+        self._step_label(lay, t("② ボタンひとつで準備する"))
+        self._setup_btn = QPushButton(t("▶ 自動でセットアップして有効にする"))
+        self._setup_btn.setObjectName("close")   # 主ボタン配色（紫）
+        self._setup_btn.setEnabled(bool(self._providers))
+        self._setup_btn.clicked.connect(self._auto_setup)
+        lay.addWidget(self._setup_btn)
+
+        self._status_lbl = QLabel("")
+        self._status_lbl.setWordWrap(True)
+        self._status_lbl.setStyleSheet("color:#8a7fa6;font-size:12px;background:transparent;")
+        lay.addWidget(self._status_lbl)
+
+        # ── ③ 有効/無効 ───────────────────────────────────
+        self._on_cb = QCheckBox(t("有効にする（小さいページを自動で高解像度化）"))
+        self._on_cb.setChecked(bool(self._cfg["on"]))
+        self._on_cb.stateChanged.connect(self._on_toggle_enable)
+        lay.addWidget(self._on_cb)
+
+        if not self._providers:
+            warn = QLabel(t("超解像プラグインが見つかりません。plugins/local_upscale を確認してください。"))
+            warn.setWordWrap(True)
+            warn.setStyleSheet("color:#e0b07f;font-size:12px;background:transparent;")
+            lay.addWidget(warn)
+
+        # ── 詳細設定（折りたたみ・既定で隠す）──────────────
+        self._adv_btn = QPushButton(t("詳細設定 ▾"))
+        self._adv_btn.setCheckable(True)
+        self._adv_btn.clicked.connect(self._toggle_adv)
+        lay.addWidget(self._adv_btn)
+        self._adv = QWidget(); self._adv.setStyleSheet("background:transparent;")
+        av = QVBoxLayout(self._adv); av.setContentsMargins(0, 4, 0, 0); av.setSpacing(8)
+        self._build_advanced(av)
+        self._adv.setVisible(False)
+        lay.addWidget(self._adv)
+
+        row = QHBoxLayout(); row.addStretch()
+        close = QPushButton(t("閉じる")); close.setObjectName("flat")
+        close.clicked.connect(self.accept)
+        row.addWidget(close); lay.addLayout(row)
+
+        ai_server.get_upscale_manager().status_changed.connect(self._on_srv_status)
+        self._sync_endpoint_state()
+        self._refresh_status()
+
+    def _step_label(self, lay, text):
+        s = QLabel(text)
+        s.setStyleSheet("color:#cbb8ff;font-size:12px;font-weight:bold;background:transparent;")
+        lay.addSpacing(2); lay.addWidget(s)
+
+    def _build_advanced(self, av):
+        """上級者向け設定（自動起動・プラグイン・接続先・データ削除）。"""
+        self._manage_cb = QCheckBox(t("Piewerでサーバを自動起動する（推奨）"))
+        self._manage_cb.setChecked(bool(self._cfg["server"].get("manage", True)))
+        self._manage_cb.stateChanged.connect(self._on_manage_changed)
+        av.addWidget(self._manage_cb)
+
+        prow = QHBoxLayout(); prow.setSpacing(8)
+        prow.addWidget(QLabel(t("プラグイン")))
+        self._plugin_cb = QComboBox()
+        for p in self._providers:
+            self._plugin_cb.addItem(getattr(p, "name", p.id), p.id)
+        pi = self._plugin_cb.findData(self._cfg.get("plugin", ""))
+        self._plugin_cb.setCurrentIndex(pi if pi >= 0 else 0)
+        self._plugin_cb.currentIndexChanged.connect(self._apply)
+        prow.addWidget(self._plugin_cb, 1); av.addLayout(prow)
+
+        erow = QHBoxLayout(); erow.setSpacing(8)
+        erow.addWidget(QLabel(t("接続先URL")))
+        self._endpoint = QLineEdit(str(self._cfg["opts"].get("endpoint", "")))
+        self._endpoint.setPlaceholderText("http://127.0.0.1:7861/upscale")
+        self._endpoint.editingFinished.connect(self._apply)
+        erow.addWidget(self._endpoint, 1)
+        self._test_btn = QPushButton(t("接続テスト"))
+        self._test_btn.setEnabled(bool(self._providers))
+        self._test_btn.clicked.connect(self._test)
+        erow.addWidget(self._test_btn); av.addLayout(erow)
+
+        self._test_lbl = QLabel("")
+        self._test_lbl.setWordWrap(True)
+        self._test_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        av.addWidget(self._test_lbl)
+
+        self._build_cache_row(av)
+
+    def _toggle_adv(self):
+        vis = self._adv_btn.isChecked()
+        self._adv.setVisible(vis)
+        self._adv_btn.setText(t("詳細設定 ▴") if vis else t("詳細設定 ▾"))
+        self.adjustSize()
+
+    # ── かんたんセットアップ（ワンボタン）────────────────────
+
+    def _set_status(self, text: str, kind: str = "muted"):
+        colors = {"ok": "#7fd6a0", "err": "#e08a7f", "info": "#bfa6ff", "muted": "#8a7fa6"}
+        self._status_lbl.setStyleSheet(
+            f"color:{colors.get(kind, '#8a7fa6')};font-size:12px;background:transparent;")
+        self._status_lbl.setText(text)
+
+    def _auto_setup(self, *_):
+        if self._setting_up:
+            return
+        if not self._providers:
+            self._set_status(t("超解像プラグインが見つかりません。"), "err")
+            return
+        import ai_runtime
+        # 設定を確定（自動起動ON・有効ON・拡大率/実行先）
+        self._manage_cb.setChecked(True)
+        self._on_cb.blockSignals(True); self._on_cb.setChecked(True); self._on_cb.blockSignals(False)
+        self._sync_endpoint_state()
+        self._persist()
+        scale = int(self._scale_cb.currentData() or 2)
+        denoise = int(self._cfg["server"].get("denoise", 1))
+        if ai_runtime.cugan_ready(scale, denoise):
+            self._set_status(t("準備済み。サーバを起動して有効にします…"), "info")
+            self._start_and_enable()
+        else:
+            self._setting_up = True
+            self._setup_btn.setEnabled(False)
+            self._set_status(t("Real-CUGAN を準備しています…（初回はダウンロードに時間がかかります）"), "info")
+            worker = _CuganPrepWorker(scale, denoise)
+            worker.signals.done.connect(self._prep_then_start)
+            self._pool.start(worker)
+
+    def _prep_then_start(self, ok: bool, msg: str):
+        self._setting_up = False
+        self._setup_btn.setEnabled(True)
+        if not ok:
+            self._set_status(
+                t("準備に失敗しました: ") + msg
+                + t("（詳細設定で接続先や実行先を確認できます）"), "err")
+            return
+        self._start_and_enable()
+
+    def _start_and_enable(self):
+        """設定を保存し、サーバ起動＋表示反映（readerがあれば経由、無ければ直接）。"""
+        self._persist()
+        if self._on_change:
+            self._on_change()          # reader.apply_ai_upscale → サーバ起動同期＋再描画
+        if self._reader is None and self._manage_cb.isChecked():
+            self._start_server_standalone()   # readerが無いときは自前で起動
+        self._refresh_status()
+
+    def _on_toggle_enable(self, *_):
+        self._persist()
+        if self._on_cb.isChecked():
+            self._start_and_enable()
+        else:
+            if self._on_change:
+                self._on_change()
+            self._refresh_status()
+
+    def _on_param_changed(self, *_):
+        import ai_server
+        self._persist()
+        if (self._on_cb.isChecked() and self._manage_cb.isChecked()
+                and ai_server.get_upscale_manager().is_active()):
+            self._set_status(t("拡大/実行先を変えました。②をもう一度押すと反映されます。"), "info")
+        else:
+            self._refresh_status()
+
+    def _refresh_status(self):
+        import ai_server
+        if not self._on_cb.isChecked():
+            self._set_status(t("無効です。②を押すと準備して有効にします。"), "muted")
+            return
+        M = ai_server.UpscaleServerManager
+        if not self._manage_cb.isChecked():
+            self._set_status(t("✓ 有効（手動の接続先を使用）。"), "ok")
+            return
+        st = ai_server.get_upscale_manager().status
+        if st == M.RUNNING:
+            self._set_status(t("✓ 有効・実行中。小さいページが自動で高解像度化されます。"), "ok")
+        elif st == M.STARTING:
+            self._set_status(t("サーバを起動中…（初回はモデル読込で時間がかかります）"), "info")
+        elif st == M.ERROR:
+            self._set_status(t("サーバエラー: ") + ai_server.get_upscale_manager().message[:100], "err")
+        else:
+            self._set_status(t("有効。②を押すとサーバを起動します。"), "info")
+
+    def _on_srv_status(self, status: str, msg: str):
+        self._refresh_status()
+
+    def _on_manage_changed(self, *_):
+        self._sync_endpoint_state()
+        self._apply()
+        self._refresh_status()
+
+    def _sync_endpoint_state(self):
+        """自動起動ONなら接続先URLはポートから自動導出（手入力を無効化）。"""
+        managed = self._manage_cb.isChecked()
+        port = int(self._cfg["server"].get("port", 7861))
+        if managed:
+            self._endpoint.setText(f"http://127.0.0.1:{port}/upscale")
+        self._endpoint.setReadOnly(managed)
+
+    def _start_server_standalone(self):
+        """reader が無い場合（設定だけ開いたとき）に直接サーバを起動する。"""
+        import ai_server, ai_runtime
+        sv = self._cfg["server"]
+        scale = int(self._scale_cb.currentData() or 2); denoise = int(sv.get("denoise", 1))
+        ready = ai_runtime.cugan_ready(scale, denoise)
+        python = sv.get("python", "") or (
+            str(ai_runtime.runtime_python_exe()) if ai_runtime.python_ready() else "")
+        ai_server.get_upscale_manager().start(
+            python=python, device=self._dev_cb.currentData(),
+            port=int(sv.get("port", 7861)), backend=("cugan" if ready else "demo"),
+            repo=str(ai_runtime.cugan_repo_dir()) if ready else "",
+            weights_dir=str(ai_runtime.cugan_weights_dir()) if ready else "",
+            scale=scale, denoise=denoise)
+
+    # ── 設定の収集/保存 ─────────────────────────────────────
+
+    def _collect_opts(self) -> dict:
+        return {"endpoint": self._endpoint.text().strip(), "mode": "multipart",
+                "field": "image", "max_side": 0, "timeout": 180}
+
+    def _persist(self, *_):
+        import ai_upscale
+        cur = ai_upscale.merge(getattr(self.settings, "ai_upscale", {}) or {})
+        cur["on"] = self._on_cb.isChecked()
+        if self._providers:
+            cur["plugin"] = self._plugin_cb.currentData()
+        cur["opts"] = self._collect_opts()
+        sv = dict(cur["server"])
+        sv["scale"] = int(self._scale_cb.currentData() or 2)
+        if hasattr(self, "_manage_cb"):
+            sv["manage"] = self._manage_cb.isChecked()
+            sv["device"] = self._dev_cb.currentData()
+        cur["server"] = sv
+        self.settings.ai_upscale = dict(cur)
+        self.settings.save()
+
+    def _apply(self, *_):
+        self._persist()
+        if self._on_change:
+            self._on_change()
+
+    # ── 接続テスト ──────────────────────────────────────────
+
+    def _current_provider(self):
+        import plugins
+        if not self._providers:
+            return None
+        return plugins.get_upscaler(self._plugin_cb.currentData())
+
+    def _test(self, *_):
+        prov = self._current_provider()
+        if prov is None:
+            return
+        opts = dict(self._collect_opts())
+        opts["timeout"] = 20   # テストは短めに
+        self._test_btn.setEnabled(False)
+        self._test_lbl.setStyleSheet("color:#8a7fa6;font-size:11px;background:transparent;")
+        self._test_lbl.setText(t("テスト中…"))
+        worker = _UpscaleTestWorker(prov, opts)
+        worker.signals.done.connect(self._test_done)
+        self._pool.start(worker)
+
+    def _test_done(self, ok: bool, msg: str):
+        self._test_btn.setEnabled(bool(self._providers))
+        color = "#7fd6a0" if ok else "#e08a7f"
+        self._test_lbl.setStyleSheet(f"color:{color};font-size:11px;background:transparent;")
+        self._test_lbl.setText(("✓ " if ok else "✗ ") + msg)
+
+    # ── 高解像度データ（キャッシュ）の容量表示＋全削除 ───────
+
+    def _build_cache_row(self, lay):
+        crow = QHBoxLayout(); crow.setSpacing(8)
+        self._cache_lbl = QLabel("")
+        self._cache_lbl.setStyleSheet("color:#bfa6ff;font-size:12px;background:transparent;")
+        crow.addWidget(self._cache_lbl, 1)
+        btn = QPushButton(t("高解像度データを削除")); btn.clicked.connect(self._clear_cache_clicked)
+        crow.addWidget(btn); lay.addLayout(crow)
+        self._update_cache_label()
+
+    def _update_cache_label(self):
+        import ai_upscale
+        mb = ai_upscale.cache_size_bytes() / (1024 * 1024)
+        self._cache_lbl.setText(t("高解像度データ: {mb:.1f} MB").format(mb=mb))
+
+    def _clear_cache_clicked(self, *_):
+        import ai_upscale
+        if ai_upscale.cache_size_bytes() <= 0:
+            self._cache_lbl.setText(t("高解像度データ: 0.0 MB（削除するものはありません）"))
+            return
+        if QMessageBox.question(self, t("高解像度データの削除"),
+                                t("保存済みの高解像度データを全て削除しますか？\n"
+                                  "（次に開いたページから作り直されます）"),
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                                ) != QMessageBox.StandardButton.Yes:
+            return
+        ai_upscale.clear_cache()
+        self._update_cache_label()
+        if self._reader is not None:
+            self._reader.apply_ai_upscale()
+
+    def closeEvent(self, e):
+        self._persist()
+        if self._on_change:
+            self._on_change()
         super().closeEvent(e)
 
 
