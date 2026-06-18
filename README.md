@@ -42,6 +42,10 @@
 
 <img src="screenshots/shelves.jpg" width="820" alt="本棚選択画面">
 
+**蔵書をグリッドで一覧（ZIP / PDF / 画像フォルダなどを混在管理）**
+
+<img src="screenshots/library-grid.jpg" width="820" alt="蔵書グリッド表示">
+
 **漫画を読む（見開き・縦読み・PDF 対応）**
 
 <img src="screenshots/reader.jpg" width="820" alt="リーダー画面">
