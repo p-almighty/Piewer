@@ -18,6 +18,7 @@ license.key
 Piewer_setup_paid.iss
 
 # その他
+release_notes_*.md
 error.txt
 .venv/
 venv/
