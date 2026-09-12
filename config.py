@@ -101,7 +101,7 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 COVER_GEN_W, COVER_GEN_H = 210, 290
 CARD_SPACING = 16
 APP_NAME = "Piewer"
-APP_VERSION = "1.90"
+APP_VERSION = "1.91"
 # 完全無料・オープンソース。登録数の制限はなし。寄付（任意）の受け口。
 SUPPORT_URL = "https://ko-fi.com/p_almighty"   # 寄付（Ko-fi）。後で差し替え可
 # 履歴棚（最近読んだ本）

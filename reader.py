@@ -1158,17 +1158,6 @@ class ReaderView(QWidget):
         self._grid.closed.connect(self._close_grid)
         self._grid.hide()
 
-        # 操作ヒント（本を開いた直後に数秒だけ表示）
-        self._hint = QLabel(t("右クリックでメニュー表示／ Esc または「← 本棚」で戻る"), self)
-        self._tr.append((self._hint, "右クリックでメニュー表示／ Esc または「← 本棚」で戻る", "text"))
-        self._hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._hint.setStyleSheet(
-            "background:rgba(20,20,20,220);color:#fff;font-size:14px;"
-            "border:1px solid #a06cff;border-radius:18px;padding:8px 18px;")
-        self._hint.setVisible(False)
-        self._hint_timer = QTimer(self); self._hint_timer.setSingleShot(True)
-        self._hint_timer.timeout.connect(self._hide_hint)
-
         # AI着色の状態バッジ（着色中／失敗を右上に小さく表示）
         self._ai_badge = QLabel("", self)
         self._ai_badge.setStyleSheet(
@@ -1188,28 +1177,11 @@ class ReaderView(QWidget):
         self._update_bookmark_ui()   # しおり一覧ボタンの件数つき表示を復元
         self._update_fit_btn()       # フィットボタン（動的ラベル）を再翻訳
 
-    def _flash_hint(self):
-        """本を開いた直後、ツールバーとヒントを数秒だけ表示して操作方法を知らせる。"""
-        self._toolbar_w.setVisible(True)
-        self._toolbar_w.raise_()
-        self._hint.adjustSize()
-        self._hint.move((self.width() - self._hint.width()) // 2, 70)
-        self._hint.setVisible(True)
-        self._hint.raise_()
-        self._hint_timer.start(3500)
-
-    def _hide_hint(self):
-        self._hint.setVisible(False)
-        if not self._hud_visible:
-            self._toolbar_w.setVisible(False)
-
     def _toggle_hud(self):
         self._set_hud_visible(not self._hud_visible)
 
     def _set_hud_visible(self, v: bool):
         self._hud_visible = v
-        if v and hasattr(self, "_hint"):   # メニューを開いたらヒントは消す
-            self._hint_timer.stop(); self._hint.setVisible(False)
         self._toolbar_w.setVisible(v)
         self._thumb_strip.setVisible(v)
         if v:
@@ -1532,7 +1504,6 @@ class ReaderView(QWidget):
         # 全画面へは自動移行しない。ボタンは現在のウィンドウ状態に合わせる。
         self._fs_btn.set_checked(getattr(self.window(), "_fullscreen", False), silent=True)
         self._wheel_btn.set_checked(self.settings.wheel_mode == "page", silent=True)
-        QTimer.singleShot(120, self._flash_hint)   # 操作ヒントを一定時間表示
 
     def _jump_to_page(self, idx: int):
         if not self.source: return

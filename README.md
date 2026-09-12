@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.90-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.91-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -79,6 +79,9 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.91
+- 📖 **本を開いた瞬間から漫画だけを表示** — これまでは開いた直後に操作ツールバーとヒントが約3.5秒表示されていましたが、これを廃止しました。メニューはこれまでどおり右クリック（または中央クリック）でいつでも開けます
 
 ### v1.90
 - 🔍 **AI 超解像（高解像度化）を追加** — 低解像度のページをローカルAIでくっきり拡大。「🎨 画質」→「🔍 AI超解像の設定を開く…」→「▶ 自動でセットアップ」のワンボタンで準備でき、表示より小さいページにだけ自動で適用されます

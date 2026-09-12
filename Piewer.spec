@@ -19,7 +19,16 @@ a = Analysis(
                    'uuid', 'urllib.request', 'urllib.error'],
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    # 本体が使わない重量級パッケージを除外する。
+    # 開発環境に torch/pandas/scipy 等が入っていると、pymupdf.table の
+    # 遅延 import(pandas) を静的解析が拾い pandas→scipy→torch と芋づるで
+    # 取り込まれ、exe が 82MB → 2.4GB に膨張する。
+    # AI着色/超解像の重い依存は別の standalone ランタイム
+    # (~/.manga_viewer/ai_runtime) 側にあり、本体には不要。
+    excludes=['torch', 'torchvision', 'torchaudio', 'torchgen', 'functorch',
+              'pandas', 'pyarrow', 'fastparquet', 'scipy', 'sympy', 'mpmath',
+              'networkx', 'numpy', 'cv2', 'sklearn', 'skimage', 'matplotlib',
+              'IPython', 'tzdata', 'fsspec'],
     cipher=block_cipher,
     noarchive=False,
 )
