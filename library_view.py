@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
     QFileDialog, QMessageBox, QInputDialog, QLineEdit, QDialog,
-    QPushButton, QTextEdit, QApplication, QMenu, QScroller
+    QPushButton, QTextEdit, QApplication, QMenu, QScroller, QToolButton
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPoint, QElapsedTimer
 from PySide6.QtGui import QPixmap, QCursor, QPainter, QColor, QPainterPath
@@ -59,6 +59,7 @@ class LibraryView(QWidget):
         self._all_books: list[dict] = []
         self._v_cols = 1
         self._v_card_w = 160; self._v_card_h = 220
+        self._v_x0 = self._MARGIN        # グリッド左端X（中央揃えで可変）
         self._v_row_h = 0
         self._v_cards: dict[str, tuple] = {}
         self._scroll_target: float = 0.0
@@ -71,6 +72,9 @@ class LibraryView(QWidget):
         self._apply_fps()  # ウィンドウのあるモニターのリフレッシュレートを反映
         self._resize_timer = QTimer(self); self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(120); self._resize_timer.timeout.connect(self.refresh)
+        # 検索入力の再描画はまとめる（数万冊の全棚検索でも打っている間は固まらない）
+        self._search_timer = QTimer(self); self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(110); self._search_timer.timeout.connect(self.refresh)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -120,8 +124,23 @@ class LibraryView(QWidget):
         self._search_box.setPlaceholderText(t("🔍 検索..."))
         self._tr.append((self._search_box, "🔍 検索...", "placeholder"))
         self._search_box.setFixedSize(150, 30)
-        self._search_box.setStyleSheet("QLineEdit{background:#2b2539;color:#ddd;border:1px solid #463d63;border-radius:10px;padding:0 8px;font-size:12px;} QLineEdit:focus{border-color:#a06cff;}")
+        # 右端に✕ボタンを置くので、その分だけ右パディングを広げる
+        self._search_box.setStyleSheet("QLineEdit{background:#2b2539;color:#ddd;border:1px solid #463d63;border-radius:10px;padding:0 24px 0 8px;font-size:12px;} QLineEdit:focus{border-color:#a06cff;}")
         self._search_box.textChanged.connect(self._on_search)
+        # 入力を一発で消す✕ボタン（文字があるときだけ表示）
+        self._search_clear = QToolButton(self._search_box)
+        self._search_clear.setText("✕")
+        self._search_clear.setToolTip(t("検索をクリア"))
+        self._tr.append((self._search_clear, "検索をクリア", "tooltip"))
+        self._search_clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._search_clear.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._search_clear.setFixedSize(18, 18)
+        self._search_clear.move(150 - 18 - 6, (30 - 18) // 2)
+        self._search_clear.setStyleSheet(
+            "QToolButton{border:none;background:#463d63;color:#ddd;border-radius:9px;"
+            "font-size:11px;padding:0;} QToolButton:hover{background:#a06cff;color:white;}")
+        self._search_clear.clicked.connect(self._clear_search)
+        self._search_clear.hide()
         tb.addWidget(self._search_box)
         self._search_all_btn = ToggleBtn(t("全棚"), False, h=30)
         self._search_all_btn.setToolTip(t("全ての本棚を横断して検索"))
@@ -257,7 +276,7 @@ class LibraryView(QWidget):
             if bid in self._v_cards: continue
             card = BookCard(book, cw, ch, parent=self._grid_w)
             row, col = i // cols, i % cols
-            card.move(M + col * (cw + 4 + CARD_SPACING), M + row * row_h)
+            card.move(self._v_x0 + col * (cw + 4 + CARD_SPACING), M + row * row_h)
             card.show()
             card.clicked.connect(self.open_book.emit)
             card.remove_requested.connect(self._remove_one)
@@ -440,7 +459,14 @@ class LibraryView(QWidget):
             self._refresh_sort_label()
 
     def _on_search(self, text: str):
-        self._filter = fold_text(text); self.refresh()   # かな/全半角を区別しない
+        self._search_clear.setVisible(bool(text))
+        self._filter = fold_text(text)                   # かな/全半角を区別しない
+        self._search_timer.start()                       # 入力が止まってから一度だけ再描画
+
+    def _clear_search(self):
+        """検索窓の✕：入力を消して全件表示に戻す（フォーカスは窓に残す）。"""
+        self._search_box.clear()
+        self._search_box.setFocus()
 
     def _on_search_all(self, checked: bool):
         self._search_all = checked; self.refresh()
@@ -457,13 +483,23 @@ class LibraryView(QWidget):
         self._sz_l.set_checked(size == "large",  silent=True)
         self.refresh()
 
-    def enter_search_all(self):
-        """全本棚を横断して検索するモードで開く（本棚選択画面の検索ボタン用）。"""
+    def enter_search_all(self, keep_query: bool = False):
+        """全本棚を横断して検索するモードで開く（本棚選択画面の検索ボタン用）。
+
+        keep_query=True は「マウス進む」で検索画面に復帰するとき用＝前の入力を残す。
+        """
         self._search_all = True
         self._search_all_btn.set_checked(True, silent=True)
-        self._search_box.clear()
+        if not keep_query:
+            self._search_box.clear()
         self.refresh()
+        if not keep_query:
+            self.reset_scroll()    # 直前の本棚のスクロール位置を持ち込まない
         self._search_box.setFocus()
+
+    def is_search_all_mode(self) -> bool:
+        """全本棚を横断検索するモードで開いているか（マウス「進む」の復帰先判定用）。"""
+        return self._search_all
 
     def exit_search_all_mode(self):
         """通常の本棚を開くときは全棚横断モードを解除する（その棚だけを表示）。"""
@@ -516,6 +552,18 @@ class LibraryView(QWidget):
         絞り込み中（self.library.books は変わらない）はタイトル集合が同じなので
         作り直さず、入力中の補完を妨げない。
         """
+        if self._search_all:
+            # 全棚横断検索中はサジェストを付けない。全本棚ぶん（数万件）の候補を
+            # 作ると検索画面を開くたびに固まるうえ、下の一覧が入力に追従するので
+            # 候補ポップアップが無くても困らない。
+            if getattr(self, "_suggest_sig", None) == "__all__":
+                return
+            self._suggest_sig = "__all__"
+            old = self._search_box.completer()
+            self._search_box.setCompleter(None)
+            if old is not None:
+                old.deleteLater()
+            return
         titles = tuple(sorted({b["title"] for b in self.library.books}))
         if titles == getattr(self, "_suggest_sig", None):
             return
@@ -578,11 +626,13 @@ class LibraryView(QWidget):
         self.refresh()                       # 訳し直した文言で再描画
 
     def has_active_filter(self) -> bool:
-        return self._fav_filter or bool(self._tag_filter) or self._read_filter != "all"
+        return (self._fav_filter or bool(self._tag_filter)
+                or self._read_filter != "all" or bool(self._filter))
 
     def clear_filters(self):
         self._fav_filter = False; self._tag_filter.clear()
         self._read_filter = "all"
+        self._search_box.clear()   # 検索文字列も解除（refresh は textChanged 経由で走る）
         self._update_filter_btn(); self.refresh()
 
     # ── 本カードの右クリックメニュー ────────────────────────
@@ -811,16 +861,25 @@ class LibraryView(QWidget):
 
     def refresh(self):
         self._stop_mid(); self._smooth_timer.stop(); self._fling_timer.stop()
+        self._search_timer.stop()   # 保留中の検索再描画は今回の refresh で消化する
         self._load_shelf_sort()   # 本棚が変わっていたら、その棚の並び順を復元
-        self._set_shelf_name(t(self.library.current_shelf["name"]))
+        # 全棚横断検索中は「どこかの本棚に入っている」ように見せない（棚名の代わりに検索と表示）
+        searching = self._search_all
+        self._set_shelf_name(t("🔍 全本棚を検索") if searching
+                             else t(self.library.current_shelf["name"]))
         # 仮想棚（履歴・お気に入り）では「ファイル追加」を隠す
         virt = self.library.is_virtual_active
         # UIの一貫性: 仮想棚（お気に入り/履歴）でも「+ ファイル」は消さず無効表示にして
         # 位置を固定する（棚を切り替えてもツールバーのボタンがズレないようにする）。
-        self._addfile_btn.set_enabled_look(not virt)
+        self._addfile_btn.set_enabled_look(not virt and not searching)
         self._addfile_btn.setToolTip(
+            t("検索中は追加できません（本棚を開いてから追加してください）") if searching else
             t("お気に入り・最近読んだ本には直接追加できません（通常の本棚に追加してください）")
             if virt else "")
+        # 棚に属する設定（名前変更など）は検索中は対象の棚が無いので無効にする
+        self._settings_btn.set_enabled_look(not searching)
+        self._settings_btn.setToolTip(
+            t("本棚の設定です（検索中は使えません）") if searching else "")
         if virt and self._selection_mode:
             self._exit_sel_mode()
         self._sync_search_suggest()
@@ -860,6 +919,10 @@ class LibraryView(QWidget):
         M = self._MARGIN
         avail_w = self.scroll.viewport().width() - M * 2
         cols = max(1, (avail_w + CARD_SPACING) // (cw + 4 + CARD_SPACING))
+        # 列がビューポート幅にぴったり収まらないと右側だけ余白が空くので、
+        # グリッド全体を中央に寄せる（列数が1でも余白を左右均等にする）。
+        grid_w = cols * (cw + 4) + max(0, cols - 1) * CARD_SPACING
+        self._v_x0 = max(M, (self.scroll.viewport().width() - grid_w) // 2)
         self._v_cols = cols; self._v_card_w = cw; self._v_card_h = ch
         self._v_row_h = ch + 4 + CARD_SPACING
         total_rows = (len(books) + cols - 1) // cols

@@ -136,6 +136,11 @@ _EN = {
         "\"Resume\" opens where you left off (use the \"First\" button or Home key to go back to the start).",
     "お気に入り・最近読んだ本には直接追加できません（通常の本棚に追加してください）":
         "Can't add directly to Favorites / Recently read (add to a normal shelf instead)",
+    "検索をクリア": "Clear search",
+    "検索中は追加できません（本棚を開いてから追加してください）":
+        "Can't add while searching (open a shelf first)",
+    "本棚の設定です（検索中は使えません）":
+        "Shelf settings (not available while searching)",
     "🏷 絞り込み": "🏷 Filter",
     "絞り込み": "Filter",
     "🔍 タグを検索...": "🔍 Search tags...",

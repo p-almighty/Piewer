@@ -14,7 +14,7 @@ from i18n import t
 import updater
 import config
 from config import (Library, Settings, PageSource, APP_STYLE, APP_VERSION,
-                    SUPPORT_URL, RAR_SUPPORT, PDF_SUPPORT)
+                    SUPPORT_URL, RAR_SUPPORT, PDF_SUPPORT, VIRTUAL_SHELF_IDS)
 from widgets import TitleBar, show_global_settings
 from shelf_view import ShelfSelectView
 from folder_view import FolderBrowserView
@@ -101,6 +101,9 @@ class MainWindow(QMainWindow):
         i18n.set_lang(self.settings.lang)
         self.library = Library()        # 完全無料・無制限（登録上限なし）
         self._scroll_pos = 0; self._last_book_id = ""
+        # マウス「進む」で戻れるように、本棚一覧へ戻る直前の画面を覚えておく
+        # ("shelf", 本棚ID) / ("search", "") / ("folder", "")
+        self._fwd_state: tuple[str, str] | None = None
         self._quick_session = False  # 登録せずに開いた本を読んでいるか（戻り先を本棚選択にする）
         self._browser_session = False  # フォルダ閲覧から開いたか（戻り先をフォルダ閲覧にする）
         # 最大化・スナップは Windows ネイティブに任せる。全画面のみ自前管理。
@@ -416,8 +419,14 @@ class MainWindow(QMainWindow):
 
     def _go_home(self):
         # 本棚を離れる前に現在のスクロール位置を記憶
-        if self.stack.currentWidget() is self.library_view:
+        cur = self.stack.currentWidget()
+        if cur is self.library_view:
             self.library_view.remember_scroll()
+            # マウス「進む」で同じ画面に戻れるようにする
+            self._fwd_state = (("search", "") if self.library_view.is_search_all_mode()
+                               else ("shelf", self.library.active_shelf_id))
+        elif cur is self.folder_view:
+            self._fwd_state = ("folder", "")
         self.shelf_select.refresh()
         self.stack.setCurrentWidget(self.shelf_select)
         self.setWindowTitle("Piewer")
@@ -446,18 +455,51 @@ class MainWindow(QMainWindow):
                     if self.library_view.has_active_filter():
                         self.library_view.clear_filters(); return True
                     self._go_home(); return True
+                if cur is self.folder_view:
+                    self._go_home(); return True
             if event.button() == Qt.MouseButton.ForwardButton:
-                if self.stack.currentWidget() is self.library_view and self._last_book_id:
-                    self._open_book(self._last_book_id); return True
+                if self._go_forward(): return True
         return False
+
+    def _go_forward(self) -> bool:
+        """マウス「進む」＝ひとつ深い階層へ。戻るの逆操作になるよう統一する。
+
+        本棚一覧 → 直前に開いていた本棚（検索/フォルダ閲覧ならその画面）
+        本棚     → 直前に開いていた本
+        """
+        cur = self.stack.currentWidget()
+        if cur is self.shelf_select:
+            if not self._fwd_state: return False
+            kind, sid = self._fwd_state
+            if kind == "search":
+                self._enter_search(keep_query=True); return True   # 入力していた語も戻す
+            if kind == "folder":
+                self._open_folder_browser(); return True
+            if kind == "shelf" and self._shelf_exists(sid):
+                self._enter_shelf(sid); return True
+            self._fwd_state = None   # 消えた本棚は覚えておかない
+            return False
+        if cur is self.library_view:
+            if self._last_book_id and self.library.get(self._last_book_id):
+                self._open_book(self._last_book_id); return True
+        return False
+
+    def _shelf_exists(self, sid: str) -> bool:
+        return bool(sid) and (sid in VIRTUAL_SHELF_IDS
+                              or any(s["id"] == sid for s in self.library.shelves))
 
     # ── 全本棚を横断検索 / 登録せずに開く（クイックオープン）──────────────
 
-    def _enter_search(self):
-        """本棚選択画面の「🔍 全本棚を検索」：全棚横断検索モードで本棚ビューを開く。"""
+    def _enter_search(self, keep_query: bool = False):
+        """本棚選択画面の「🔍 全本棚を検索」：全棚横断検索モードで本棚ビューを開く。
+
+        表示は「🔍 全本棚を検索」で、どこかの本棚に入ったようには見せない
+        （棚名は出さず、その棚向けの操作＝ファイル追加・本棚設定は無効化する）。
+        裏側の対象棚は、履歴・お気に入りの特殊扱いを持ち込まないため実棚にしておく。
+        """
         if self.library.is_virtual_active and self.library.shelves:
             self.library.switch_shelf(self.library.shelves[0]["id"])
-        self.library_view.enter_search_all()
+        self.library_view.enter_search_all(keep_query=keep_query)
         self.stack.setCurrentWidget(self.library_view)
         self.setWindowTitle(f"Piewer — {t('検索')}")
         self.status.showMessage(t("全本棚を検索"))

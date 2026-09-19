@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.91-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.92-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -79,6 +79,13 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.92
+- 🖱️ **マウスの「進む」ボタンの動きを統一** — 本棚一覧で「進む」を押すと、直前に開いていた本棚（全本棚検索・フォルダから開くも同様）へ戻れるようになりました（「戻る」の逆＝ひとつ深い階層へ、で統一）
+- 🔍 **「全本棚を検索」の表示を改善** — どこかの本棚に入ったような見え方をやめ、検索中は「🔍 全本棚を検索」と表示するようにしました（その本棚向けの操作は無効表示に）
+- ✕ **検索窓にクリアボタンを追加** — 入力を一度に消せます（マウスの「戻る」でも検索語を解除できます）
+- 🖼️ **本の一覧を中央揃えに** — ウィンドウ幅によって右側だけ余白が空いていたのを解消
+- ⚡ **蔵書数が多い環境での検索を高速化** — 入力中に画面が固まらないよう改善
 
 ### v1.91
 - 📖 **本を開いた瞬間から漫画だけを表示** — これまでは開いた直後に操作ツールバーとヒントが約3.5秒表示されていましたが、これを廃止しました。メニューはこれまでどおり右クリック（または中央クリック）でいつでも開けます

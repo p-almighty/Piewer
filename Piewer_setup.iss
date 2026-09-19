@@ -3,7 +3,7 @@
 ; 出力: Output\Piewer_Setup.exe
 
 #define MyAppName "Piewer"
-#define MyAppVersion "1.91"
+#define MyAppVersion "1.92"
 #define MyAppPublisher "Piewer"
 #define MyAppExeName "Piewer.exe"
 
