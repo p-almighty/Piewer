@@ -1,6 +1,6 @@
 {
-  "version": "1.92",
+  "version": "1.93",
   "url": "https://github.com/p-almighty/Piewer/releases/latest",
-  "notes_ja": "【改善】マウスの「進む」ボタンの動きを統一しました。本棚一覧で「進む」を押すと、直前に開いていた本棚（「全本棚を検索」「フォルダから開く」も同様）へ戻れます。\n\n【改善】「全本棚を検索」が、どこかの本棚に入ったような表示になっていたのを改めました。検索中は「全本棚を検索」と表示し、その本棚向けの操作は無効になります。\n\n【追加】検索窓に「✕」ボタンを追加しました。入力を一度に消せます（マウスの「戻る」でも検索語を解除できます）。\n\n【改善】本の一覧を中央揃えにしました。ウィンドウ幅によって右側だけ余白が空いていたのを解消しています。\n\n【高速化】蔵書数が多い環境での検索を速くしました（入力中に画面が固まらないよう改善）。",
-  "notes_en": "[Improved] The mouse Forward button now behaves consistently: pressing it on the shelf list takes you back to the shelf you were just in (also works for \"Search all shelves\" and \"Open from folder\").\n\n[Improved] \"Search all shelves\" no longer looks as if you had entered some shelf. While searching it shows \"Search all shelves\", and shelf-specific actions are disabled.\n\n[Added] A clear button in the search box lets you erase what you typed in one click (the mouse Back button clears the search term too).\n\n[Improved] The book grid is now centered - no more empty space on the right at some window widths.\n\n[Faster] Searching in large libraries is much faster (typing no longer freezes the screen)."
+  "notes_ja": "【修正】検索窓などを右クリックしたときのメニュー（元に戻す／切り取り／コピー／貼り付け など）が、暗い背景に黒い文字で表示され、ほとんど読めなかった問題を修正しました。ダーク／ライトのどちらのテーマでも見やすい配色に統一しています。",
+  "notes_en": "[Fixed] The right-click menu (Undo / Cut / Copy / Paste, etc.) in the search box and other text fields was drawn as black text on a dark background and was nearly unreadable. It now uses a readable color scheme in both the dark and light themes."
 }
