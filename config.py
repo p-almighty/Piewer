@@ -101,7 +101,7 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 COVER_GEN_W, COVER_GEN_H = 210, 290
 CARD_SPACING = 16
 APP_NAME = "Piewer"
-APP_VERSION = "1.92"
+APP_VERSION = "1.93"
 # 完全無料・オープンソース。登録数の制限はなし。寄付（任意）の受け口。
 SUPPORT_URL = "https://ko-fi.com/p_almighty"   # 寄付（Ko-fi）。後で差し替え可
 # 履歴棚（最近読んだ本）
@@ -161,6 +161,19 @@ APP_STYLE = """
 QToolTip {
     background-color:#2b2539; color:#e8e4f0; border:1px solid #a06cff;
     border-radius:6px; padding:4px 8px; font-size:12px; }
+/* 右クリックの標準メニュー（検索窓の「元に戻す/貼り付け」など）。
+   ウィンドウの暗い地色だけが子に伝わって文字色が既定の黒のままになり、
+   背景と同化して読めなくなっていたので、ここで明示的に配色する。 */
+QMenu {
+    background-color:#262032; color:#ddd; border:1px solid #393350;
+    border-radius:10px; padding:4px; font-size:12px; }
+QMenu::item {
+    background:transparent; color:#ddd;
+    padding:5px 24px 5px 14px; border-radius:6px; }
+QMenu::item:selected { background:#a06cff; color:white; }
+QMenu::item:disabled { color:#8a7fa6; }
+QMenu::item:disabled:selected { background:transparent; color:#8a7fa6; }
+QMenu::separator { height:1px; background:#393350; margin:4px 8px; }
 QMessageBox { background-color: #262032; }
 QMessageBox QLabel { color: #ddd; font-size: 13px; }
 QMessageBox QPushButton {
