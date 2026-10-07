@@ -967,7 +967,9 @@ class LibraryView(QWidget):
         if RAR_SUPPORT: exts += " *.cbr *.rar"
         if PDF_SUPPORT: exts += " *.pdf"
         filters = t("漫画ファイル ({exts});;すべて (*)").format(exts=exts)
-        paths, _ = QFileDialog.getOpenFileNames(self, t("ファイルを追加"), "", filters)
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, t("ファイルを追加"), self.settings.file_dialog_dir(), filters)
+        if paths: self.settings.remember_file_dir(paths[0])
         self._add_paths(paths)
 
     def _add_paths(self, paths):

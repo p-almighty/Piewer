@@ -509,7 +509,9 @@ class MainWindow(QMainWindow):
         if RAR_SUPPORT: exts += " *.cbr *.rar"
         if PDF_SUPPORT: exts += " *.pdf"
         filters = t("漫画ファイル ({exts});;すべて (*)").format(exts=exts)
-        path, _ = QFileDialog.getOpenFileName(self, t("登録せずに開く"), "", filters)
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("登録せずに開く"), self.settings.file_dialog_dir(), filters)
+        if path: self.settings.remember_file_dir(path)
         return path
 
     def _quick_open(self, path: str = "", from_browser: bool = False):

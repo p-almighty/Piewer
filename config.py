@@ -101,7 +101,7 @@ SUPPORTED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 COVER_GEN_W, COVER_GEN_H = 210, 290
 CARD_SPACING = 16
 APP_NAME = "Piewer"
-APP_VERSION = "1.93"
+APP_VERSION = "1.94"
 # 完全無料・オープンソース。登録数の制限はなし。寄付（任意）の受け口。
 SUPPORT_URL = "https://ko-fi.com/p_almighty"   # 寄付（Ko-fi）。後で差し替え可
 # 履歴棚（最近読んだ本）
@@ -235,6 +235,7 @@ class Settings:
         self.resume_mode = "continue"  # 本を開いたとき: "continue"=続きから / "ask"=毎回確認 / "start"=最初から
         self.drag_zoom = True       # 上下ドラッグで無段階ズーム（マンガミーヤ式）
         self.browse_path = ""       # フォルダ閲覧で最後に開いていた場所
+        self.add_dir = ""           # 「ファイルを追加」で最後に選んだフォルダ（次回ダイアログの初期位置）
         self.auto_tag_on_add = False  # 本の追加時にファイル名から自動タグ付け（実験的）
         self.tag_labels = {}          # オートタグ分類名の上書き {役割キー:表示名}（空=既定）
         self.image_fx = {}            # 画質補正/擬似カラー化の設定（空=既定OFF。image_fx.DEFAULT参照）
@@ -265,6 +266,7 @@ class Settings:
                     self.resume_mode = d["resume_mode"]
                 self.drag_zoom = bool(d.get("drag_zoom", True))
                 self.browse_path = str(d.get("browse_path", ""))
+                self.add_dir = str(d.get("add_dir", ""))
                 self.auto_tag_on_add = bool(d.get("auto_tag_on_add", False))
                 tl = d.get("tag_labels")
                 if isinstance(tl, dict):
@@ -299,12 +301,25 @@ class Settings:
                         "shelf_open_pos": self.shelf_open_pos, "lang": self.lang,
                         "wheel_mode": self.wheel_mode, "resume_mode": self.resume_mode,
                         "drag_zoom": self.drag_zoom, "browse_path": self.browse_path,
+                        "add_dir": self.add_dir,
                         "auto_tag_on_add": self.auto_tag_on_add, "accent": self.accent,
                         "tag_labels": self.tag_labels, "image_fx": self.image_fx,
                         "ai_color": self.ai_color, "ai_upscale": self.ai_upscale,
                         "theme": self.theme, "shortcuts": self.shortcuts},
                        ensure_ascii=False),
             encoding="utf-8")
+
+    def file_dialog_dir(self) -> str:
+        """ファイル選択ダイアログの初期フォルダ（前回選んだ場所。消えていればホーム）。"""
+        d = self.add_dir
+        return d if d and Path(d).is_dir() else str(Path.home())
+
+    def remember_file_dir(self, path: str):
+        """選んだファイルのフォルダを次回の初期位置として保存。"""
+        if not path: return
+        d = str(Path(path).parent)
+        if d != self.add_dir:
+            self.add_dir = d; self.save()
 
     def set_shortcut(self, action: str, keys: list[str]):
         if action in self.shortcuts:

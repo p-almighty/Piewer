@@ -13,7 +13,7 @@
 &nbsp;
 [![開発を支援 (Ko-fi)](https://img.shields.io/badge/💗_開発を支援_(Ko--fi)-ff5e9a?style=for-the-badge)](https://ko-fi.com/p_almighty)
 <br>
-![Version](https://img.shields.io/badge/version-1.93-a06cff?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.94-a06cff?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011-555?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/license-MIT-3fbf6f?style=for-the-badge)
 
@@ -79,6 +79,9 @@
 ---
 
 ## 🆕 更新履歴
+
+### v1.94
+- 📂 **「ファイルを追加」で前回のフォルダを開くように** — 本を追加するときのファイル選択画面が、毎回 Piewer のフォルダからではなく、前回本を選んだフォルダから開くようになりました（アプリを再起動しても覚えています。「登録せずに開く」も同様）
 
 ### v1.93
 - 🖱️ **右クリックメニューの文字が読めなかったのを修正** — 検索窓などで右クリックしたときのメニュー（元に戻す／貼り付け など）が、暗い背景に黒い文字で表示され判読できなかった問題を修正しました（ダーク／ライトの両テーマで見やすい配色に統一）
