@@ -1,6 +1,6 @@
 {
-  "version": "1.93",
+  "version": "1.94",
   "url": "https://github.com/p-almighty/Piewer/releases/latest",
-  "notes_ja": "【修正】検索窓などを右クリックしたときのメニュー（元に戻す／切り取り／コピー／貼り付け など）が、暗い背景に黒い文字で表示され、ほとんど読めなかった問題を修正しました。ダーク／ライトのどちらのテーマでも見やすい配色に統一しています。",
-  "notes_en": "[Fixed] The right-click menu (Undo / Cut / Copy / Paste, etc.) in the search box and other text fields was drawn as black text on a dark background and was nearly unreadable. It now uses a readable color scheme in both the dark and light themes."
+  "notes_ja": "【改善】本を追加するときのファイル選択画面が、毎回 Piewer のフォルダから始まっていたのを改善し、前回本を選んだフォルダから開くようになりました（再起動後も記憶します。「登録せずに開く」も同様）。",
+  "notes_en": "[Improved] The file picker for adding books now opens in the folder you last picked from, instead of the Piewer folder. The location is remembered across restarts (also applies to \"Open without adding\")."
 }
